@@ -1,6 +1,12 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { startActiveObservation } from "@langfuse/tracing";
+import {
+  executeClickHouse,
+  getClickHouseConfig,
+  queryClickHouseText,
+  sqlString,
+} from "./clickhouse.js";
 import { callGroqJson } from "./groq.js";
 import {
   ContextBundle,
@@ -319,12 +325,96 @@ export async function runInstrumentationAgent(input: {
     });
   });
 
+  const loadReport = await startActiveObservation(
+    "06_silver_loader",
+    async (span) => {
+      span.update({
+        input: {
+          table: `silver.${schemaPlan.table_name}`,
+          row_count: eventProfile.row_count,
+          clickhouse_url: getClickHouseConfig().url,
+        },
+        metadata: {
+          agent: "silver_loader",
+          target_layer: "silver",
+        },
+      });
+
+      const rawEvents = parseNdjson(eventsNdjson);
+      const normalizedRows = rawEvents.map((event) =>
+        normalizeEventForInsert({
+          event,
+          jobId: input.jobId,
+          schemaPlan,
+        }),
+      );
+      const insertColumns = schemaPlan.columns
+        .filter((column) => column.name !== "ingested_at")
+        .map((column) => column.name);
+      const jsonEachRow = normalizedRows
+        .map((row) => JSON.stringify(row))
+        .join("\n");
+
+      await executeClickHouse(schemaSql);
+      await executeClickHouse(`INSERT INTO silver.${schemaPlan.table_name}
+(${insertColumns.join(", ")})
+FORMAT JSONEachRow
+${jsonEachRow}
+`);
+
+      const validation = await validateSilverLoad({
+        jobId: input.jobId,
+        schemaPlan,
+        eventProfile,
+        manifest,
+      });
+
+      const report = {
+        job_id: input.jobId,
+        table: `silver.${schemaPlan.table_name}`,
+        inserted_rows: normalizedRows.length,
+        validation,
+        loaded_at: new Date().toISOString(),
+      };
+
+      await writeStageJson(
+        input.artifactRoot,
+        "06_silver_loader",
+        "load_report.json",
+        report,
+      );
+
+      span.update({
+        output: {
+          table: report.table,
+          inserted_rows: report.inserted_rows,
+          validation_passed: validation.passed,
+          artifact: path.join(
+            input.artifactRoot,
+            "06_silver_loader",
+            "load_report.json",
+          ),
+        },
+        level: validation.passed ? "DEFAULT" : "ERROR",
+      });
+
+      if (!validation.passed) {
+        throw new Error(
+          `Silver load validation failed for ${report.table}: ${validation.failures.join("; ")}`,
+        );
+      }
+
+      return report;
+    },
+  );
+
   await startActiveObservation("07_context_agent", async (span) => {
     span.update({
       input: {
         feature_slug: featureSlug,
         table_name: schemaPlan.table_name,
         event_names: manifest.event_order,
+        validation_passed: loadReport.validation.passed,
       },
       metadata: {
         agent: "context_agent_v0",
@@ -377,6 +467,7 @@ export async function runInstrumentationAgent(input: {
     schemaPlan,
     schemaSql,
     mappingPlan,
+    loadReport,
   };
 }
 
@@ -703,6 +794,161 @@ function buildMappingPlan(plan: SchemaPlan): MappingPlan {
                 ? "ClickHouse DEFAULT now()"
                 : "copy from raw JSON path with nullable cast",
     })),
+  };
+}
+
+function normalizeEventForInsert(input: {
+  event: Record<string, unknown>;
+  jobId: string;
+  schemaPlan: SchemaPlan;
+}) {
+  const row: Record<string, unknown> = {};
+  for (const column of input.schemaPlan.columns) {
+    if (column.name === "ingested_at") {
+      continue;
+    }
+
+    if (column.name === "job_id") {
+      row[column.name] = input.jobId;
+      continue;
+    }
+
+    if (column.name === "raw_json") {
+      row[column.name] = JSON.stringify(input.event);
+      continue;
+    }
+
+    if (column.name === "event_name") {
+      row[column.name] = input.event.event ?? "";
+      continue;
+    }
+
+    if (column.name === "event_id") {
+      row[column.name] = input.event.id ?? "";
+      continue;
+    }
+
+    const value = column.source_path
+      ? getPath(input.event, column.source_path)
+      : null;
+    row[column.name] = normalizeValueForClickHouse(value, column.type);
+  }
+  return row;
+}
+
+function normalizeValueForClickHouse(value: unknown, columnType: string) {
+  if (value === undefined || value === "") {
+    return columnType.includes("Nullable(") ? null : defaultValue(columnType);
+  }
+
+  if (value === null) {
+    return columnType.includes("Nullable(") ? null : defaultValue(columnType);
+  }
+
+  if (columnType.includes("DateTime")) {
+    return String(value).replace("T", " ").replace("Z", "");
+  }
+
+  return value;
+}
+
+function defaultValue(columnType: string) {
+  if (columnType.includes("String")) {
+    return "";
+  }
+  if (columnType.includes("Bool")) {
+    return false;
+  }
+  if (
+    columnType.includes("UInt") ||
+    columnType.includes("Int") ||
+    columnType.includes("Float")
+  ) {
+    return 0;
+  }
+  return "";
+}
+
+function getPath(value: Record<string, unknown>, sourcePath: string) {
+  return sourcePath.split(".").reduce<unknown>((current, part) => {
+    if (current && typeof current === "object" && part in current) {
+      return (current as Record<string, unknown>)[part];
+    }
+    return undefined;
+  }, value);
+}
+
+async function validateSilverLoad(input: {
+  jobId: string;
+  schemaPlan: SchemaPlan;
+  eventProfile: EventProfile;
+  manifest: FeatureManifest;
+}) {
+  const table = `silver.${input.schemaPlan.table_name}`;
+  const jobFilter = `job_id = ${sqlString(input.jobId)}`;
+  const rowCount = Number(
+    (
+      await queryClickHouseText(
+        `SELECT count() FROM ${table} WHERE ${jobFilter} FORMAT TabSeparated`,
+      )
+    ).trim(),
+  );
+  const eventNames = (
+    await queryClickHouseText(
+      `SELECT event_name FROM ${table} WHERE ${jobFilter} GROUP BY event_name ORDER BY event_name FORMAT TabSeparated`,
+    )
+  )
+    .trim()
+    .split("\n")
+    .filter(Boolean);
+  const eventIdMissing = Number(
+    (
+      await queryClickHouseText(
+        `SELECT countIf(event_id = '') FROM ${table} WHERE ${jobFilter} FORMAT TabSeparated`,
+      )
+    ).trim(),
+  );
+  const timestampMinMax = (
+    await queryClickHouseText(
+      `SELECT min(timestamp), max(timestamp) FROM ${table} WHERE ${jobFilter} FORMAT TabSeparated`,
+    )
+  ).trim();
+
+  const expectedEvents = Object.keys(input.eventProfile.event_counts).sort();
+  const failures: string[] = [];
+
+  if (rowCount !== input.eventProfile.row_count) {
+    failures.push(
+      `row_count_mismatch expected=${input.eventProfile.row_count} actual=${rowCount}`,
+    );
+  }
+
+  const missingEvents = expectedEvents.filter(
+    (eventName) => !eventNames.includes(eventName),
+  );
+  if (missingEvents.length > 0) {
+    failures.push(`missing_events ${missingEvents.join(",")}`);
+  }
+
+  if (eventIdMissing > 0) {
+    failures.push(`missing_event_id_count=${eventIdMissing}`);
+  }
+
+  if (
+    input.manifest.success_event &&
+    !eventNames.includes(input.manifest.success_event)
+  ) {
+    failures.push(`missing_success_event=${input.manifest.success_event}`);
+  }
+
+  return {
+    passed: failures.length === 0,
+    failures,
+    expected_rows: input.eventProfile.row_count,
+    actual_rows: rowCount,
+    expected_events: expectedEvents,
+    actual_events: eventNames,
+    timestamp_min_max: timestampMinMax,
   };
 }
 

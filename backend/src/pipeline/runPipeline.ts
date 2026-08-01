@@ -81,6 +81,7 @@ export async function runPipeline(input: RunPipelineInput) {
         "03_spec_parser",
         "04_schema_generator",
         "05_schema_critic",
+        "06_silver_loader",
         "07_context_agent",
         "12_trace_summary",
       ]);
@@ -98,6 +99,8 @@ export async function runPipeline(input: RunPipelineInput) {
         event_names: result.manifest.event_order,
         primary_entity: result.manifest.primary_entity,
         success_event: result.manifest.success_event,
+        silver_loaded: result.loadReport.validation.passed,
+        silver_inserted_rows: result.loadReport.inserted_rows,
         artifacts: artifactRoot,
         model: process.env.GROQ_MODEL ?? "openai/gpt-oss-20b",
         groq_used: Boolean(process.env.GROQ_API_KEY),
