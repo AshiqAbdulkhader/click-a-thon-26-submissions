@@ -1,30 +1,37 @@
 # Frontend / Visualization (Schema Kings · Atlys)
 
-Judge-facing static report from pipeline artifacts.
+Judge-facing report for the problem statement viz layer.
+
+## Demo flow (recommended)
 
 ```bash
 cd backend
-pnpm cli report
-open ../frontend/dist/report.html
+pnpm cli serve
+# open http://127.0.0.1:8787
 ```
 
-## What you’re looking at
+1. Type a PM question in the **Ask** box on the page
+2. Wait for the analytics agent
+3. Page reloads with the answer + Langfuse link
+4. Scroll for features / context / recent insights
 
-Sticky nav with **three sections**:
+Same brain as `pnpm cli ask` — just linked to the HTML.
 
-1. **Features** — instrumented Silver tables (SQL collapsed)
-2. **Context** — memory / gaps after loads
-3. **Insights** — 3 recent PM answers + Langfuse links
-
-## Langfuse links
-
-Set in `backend/.env`:
+## Offline / CLI still works
 
 ```bash
-LANGFUSE_BASE_URL=http://localhost:3000
-LANGFUSE_PROJECT_ID=cmsasx39h0006p507q5x1vdzj
+pnpm cli report              # overview HTML
+pnpm cli report <job_id>     # one ask/run page
+pnpm cli ask "…"             # also auto-writes HTML
 ```
 
-Links become:
+Opening `frontend/dist/report.html` as a file works for reading, but the ask box needs `cli serve`.
 
-`{BASE}/project/{PROJECT_ID}/traces?search={trace_id}&searchType=id&searchType=content`
+## Problem statement coverage
+
+| Required              | Where                                  |
+| --------------------- | -------------------------------------- |
+| Schema over time      | Section 1 · features (+ SQL expander)  |
+| Insights + confidence | Ask page / section 3                   |
+| Context changelog     | Section 2                              |
+| Tracing               | Langfuse links (`LANGFUSE_PROJECT_ID`) |

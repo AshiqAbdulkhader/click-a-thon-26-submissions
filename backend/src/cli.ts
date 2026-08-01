@@ -2,7 +2,10 @@ import "dotenv/config";
 import path from "node:path";
 import { runAnalyticsAsk } from "./pipeline/analytics.js";
 import { bootstrapContext } from "./pipeline/context.js";
-import { generatePipelineReport } from "./pipeline/report/index.js";
+import {
+  generatePipelineReport,
+  startReportServer,
+} from "./pipeline/report/index.js";
 import { runPipeline } from "./pipeline/runPipeline.js";
 import { runSetup } from "./pipeline/setup.js";
 
@@ -19,7 +22,7 @@ Usage:
   pnpm cli run <spec-folder>
   pnpm cli ask <question>
   pnpm cli report [job_id]
-  pnpm cli report --job <job_id>
+  pnpm cli serve [--port 8787]
   pnpm pipeline <spec-folder>
 
 Examples:
@@ -29,7 +32,7 @@ Examples:
   pnpm cli ask "Why is express checkout completion lower on iOS?"
   pnpm cli report
   pnpm cli report 20260801T210941
-  pnpm cli report --job 20260801T200608_01_express_checkout
+  pnpm cli serve
   pnpm pipeline ../specs/01_express_checkout
 `);
 }
@@ -150,6 +153,23 @@ async function main() {
     ) {
       process.exitCode = 2;
     }
+    return;
+  }
+
+  if (command === "serve") {
+    const repoRoot = path.resolve(process.cwd(), "..");
+    let port = Number(process.env.REPORT_PORT ?? 8787);
+    for (let i = 0; i < args.length; i += 1) {
+      if (args[i] === "--port") {
+        port = Number(args[i + 1] ?? port);
+        i += 1;
+      } else if (args[i].startsWith("--port=")) {
+        port = Number(args[i].slice("--port=".length));
+      }
+    }
+    await startReportServer({ repoRoot, port });
+    // Keep process alive.
+    await new Promise(() => {});
     return;
   }
 

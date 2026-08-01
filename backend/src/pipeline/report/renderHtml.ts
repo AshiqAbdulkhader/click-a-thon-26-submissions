@@ -64,20 +64,193 @@ function renderShell(report: PipelineReport, body: string): string {
     .conf-high { color: #24574a; font-weight: 600; }
     .conf-medium { color: #b84f1f; font-weight: 600; }
     .conf-low { color: #7a6548; font-weight: 600; }
+    @keyframes sk-spin { to { transform: rotate(360deg); } }
+    @keyframes sk-pulse {
+      0%, 100% { opacity: 0.35; }
+      50% { opacity: 1; }
+    }
+    .sk-spinner {
+      width: 1rem;
+      height: 1rem;
+      border: 2px solid #cfd8d1;
+      border-top-color: #24574a;
+      border-radius: 9999px;
+      animation: sk-spin 0.7s linear infinite;
+    }
+    .sk-dot {
+      width: 0.4rem;
+      height: 0.4rem;
+      border-radius: 9999px;
+      background: #24574a;
+      animation: sk-pulse 1.2s ease-in-out infinite;
+    }
+    .sk-dot:nth-child(2) { animation-delay: 0.2s; }
+    .sk-dot:nth-child(3) { animation-delay: 0.4s; }
+    body.is-asking { cursor: progress; }
+    body.is-asking #page-main { opacity: 0.45; pointer-events: none; transition: opacity 0.2s ease; }
+    #ask-loading[hidden] { display: none !important; }
   </style>
 </head>
 <body class="font-sans antialiased">
   <div class="mx-auto max-w-3xl px-5 pb-24 pt-10 md:px-8">
+    ${renderAskBox()}
+    <div id="page-main">
     ${body}
     <footer class="mt-10 px-1 text-xs text-soft">
       Generated ${escapeHtml(report.generated_at)}
       · mode <span class="font-mono">${escapeHtml(report.mode)}</span>
       ${report.job_id ? ` · <span class="font-mono">${escapeHtml(report.job_id)}</span>` : ""}
-      · <span class="font-mono">pnpm cli report</span>
+      · run with <span class="font-mono">pnpm cli serve</span> to ask from this page
     </footer>
+    </div>
   </div>
+  ${askBoxScript()}
 </body>
 </html>`;
+}
+
+function renderAskBox(): string {
+  return `<section id="ask" class="section-panel mb-10 px-5 py-8 md:px-8">
+    <p class="text-xs font-semibold uppercase tracking-[0.16em] text-moss">Ask the analytics agent</p>
+    <p class="mt-2 text-sm text-soft">Type a PM question here. Same pipeline as <span class="font-mono text-xs">cli ask</span> — answer opens on this page.</p>
+    <form id="ask-form" class="mt-5 flex flex-col gap-4">
+      <label class="sr-only" for="ask-input">Question</label>
+      <textarea id="ask-input" name="question" rows="3"
+        class="w-full resize-y border-0 border-b border-line bg-transparent pb-3 text-base outline-none placeholder:text-ink/30 focus:border-moss disabled:opacity-50"
+        placeholder="Where are users dropping off in express checkout?"></textarea>
+      <div class="flex flex-wrap items-center gap-4">
+        <button type="submit" id="ask-submit"
+          class="text-sm font-semibold text-moss underline decoration-moss/40 underline-offset-4 hover:decoration-moss disabled:opacity-40 disabled:no-underline">
+          Run ask →
+        </button>
+        <a href="/" id="ask-overview" class="text-sm text-soft hover:text-moss">Overview</a>
+      </div>
+    </form>
+
+    <div id="ask-loading" hidden class="mt-6 border-t border-line pt-5">
+      <div class="flex items-start gap-3">
+        <div class="sk-spinner mt-0.5 shrink-0" aria-hidden="true"></div>
+        <div class="min-w-0 flex-1">
+          <p id="ask-loading-title" class="text-sm font-medium text-ink">Running analytics agent…</p>
+          <p id="ask-loading-stage" class="mt-1 text-sm text-soft">Understanding the question</p>
+          <div class="mt-3 flex items-center gap-2">
+            <span class="sk-dot"></span><span class="sk-dot"></span><span class="sk-dot"></span>
+            <span id="ask-loading-timer" class="ml-2 font-mono text-xs text-soft">0s</span>
+          </div>
+          <p class="mt-3 text-xs text-soft">Usually 15–60s · intent → plan → SQL → ClickHouse → insight</p>
+        </div>
+      </div>
+    </div>
+
+    <p id="ask-hint" class="mt-3 hidden text-xs text-clay" role="alert"></p>
+  </section>`;
+}
+
+function askBoxScript(): string {
+  return `<script>
+(function () {
+  const form = document.getElementById("ask-form");
+  const input = document.getElementById("ask-input");
+  const hint = document.getElementById("ask-hint");
+  const submit = document.getElementById("ask-submit");
+  const loading = document.getElementById("ask-loading");
+  const stageEl = document.getElementById("ask-loading-stage");
+  const timerEl = document.getElementById("ask-loading-timer");
+  const titleEl = document.getElementById("ask-loading-title");
+  if (!form || !input || !submit) return;
+
+  const stages = [
+    "Understanding the question",
+    "Retrieving feature + metric context",
+    "Planning analyses",
+    "Generating ClickHouse SQL",
+    "Running warehouse queries",
+    "Synthesizing PM answer",
+    "Checking evidence + confidence",
+  ];
+
+  let stageTimer = null;
+  let clockTimer = null;
+  let startedAt = 0;
+  let stageIndex = 0;
+
+  function setAsking(on) {
+    document.body.classList.toggle("is-asking", on);
+    input.disabled = on;
+    submit.disabled = on;
+    submit.textContent = on ? "Running…" : "Run ask →";
+    if (loading) loading.hidden = !on;
+  }
+
+  function startProgress() {
+    stageIndex = 0;
+    startedAt = Date.now();
+    if (stageEl) stageEl.textContent = stages[0];
+    if (titleEl) titleEl.textContent = "Running analytics agent…";
+    if (timerEl) timerEl.textContent = "0s";
+
+    stageTimer = setInterval(function () {
+      stageIndex = Math.min(stageIndex + 1, stages.length - 1);
+      if (stageEl) stageEl.textContent = stages[stageIndex];
+    }, 4500);
+
+    clockTimer = setInterval(function () {
+      const secs = Math.floor((Date.now() - startedAt) / 1000);
+      if (timerEl) timerEl.textContent = secs + "s";
+    }, 250);
+  }
+
+  function stopProgress() {
+    if (stageTimer) clearInterval(stageTimer);
+    if (clockTimer) clearInterval(clockTimer);
+    stageTimer = null;
+    clockTimer = null;
+  }
+
+  const isFile = location.protocol === "file:";
+  if (isFile) {
+    hint.textContent = "Open via pnpm cli serve (http://127.0.0.1:8787) to ask from this page.";
+    hint.classList.remove("hidden");
+    submit.disabled = true;
+    return;
+  }
+
+  form.addEventListener("submit", async function (event) {
+    event.preventDefault();
+    const question = (input.value || "").trim();
+    if (!question) return;
+
+    hint.classList.add("hidden");
+    hint.textContent = "";
+    setAsking(true);
+    startProgress();
+
+    try {
+      const res = await fetch("/api/ask", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || "Ask failed");
+
+      stopProgress();
+      if (titleEl) titleEl.textContent = "Done";
+      if (stageEl) stageEl.textContent = "Opening answer page…";
+      if (timerEl) {
+        const secs = Math.floor((Date.now() - startedAt) / 1000);
+        timerEl.textContent = secs + "s";
+      }
+      window.location.href = data.report_url || ("/?job=" + encodeURIComponent(data.job_id));
+    } catch (err) {
+      stopProgress();
+      setAsking(false);
+      hint.textContent = (err && err.message) ? err.message : String(err);
+      hint.classList.remove("hidden");
+    }
+  });
+})();
+</script>`;
 }
 
 function renderOverviewPage(report: PipelineReport): string {
@@ -85,9 +258,8 @@ function renderOverviewPage(report: PipelineReport): string {
     <header class="mb-8">
       <p class="font-display text-4xl font-semibold tracking-tight text-moss md:text-5xl">Schema Kings</p>
       <p class="mt-4 max-w-xl text-base leading-relaxed text-soft">
-        Overview of the whole pipeline. Pass a job id to open one run/ask only.
+        Ask above for live insights. Below: what instrumentation + context already produced.
       </p>
-      <p class="mt-2 font-mono text-xs text-soft">pnpm cli report 20260801T210941</p>
       <div class="mt-6 flex flex-wrap gap-x-8 gap-y-2 text-sm text-ink">
         <span><strong class="font-display text-2xl text-moss">${report.stats.features_instrumented}</strong> <span class="text-soft">features</span></span>
         <span><strong class="font-display text-2xl">${report.stats.instrumentation_runs}</strong> <span class="text-soft">spec runs</span></span>
@@ -96,6 +268,7 @@ function renderOverviewPage(report: PipelineReport): string {
     </header>
 
     <nav class="sticky top-0 z-20 mb-10 -mx-5 flex gap-1 overflow-x-auto border-y border-line bg-wash/95 px-5 py-3 text-sm backdrop-blur md:-mx-8 md:px-8">
+      <a href="#ask" class="shrink-0 px-3 py-1.5 text-ink/80">Ask</a>
       <a href="#features" class="shrink-0 px-3 py-1.5 text-ink/80">1. Features</a>
       <a href="#context" class="shrink-0 px-3 py-1.5 text-ink/80">2. Context</a>
       <a href="#insights" class="shrink-0 px-3 py-1.5 text-ink/80">3. Insights</a>
