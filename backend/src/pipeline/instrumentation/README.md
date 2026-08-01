@@ -235,6 +235,17 @@ Main function: `runSchemaGenerator`
 
 Tracking event: `instrumentationTrackingEvents.schemaGenerator`
 
+Implementation lives under `schema-generator/`:
+
+- `runner.ts`: stage orchestration, artifacts, tracking output.
+- `designLoop.ts`: schema designer / critic / revision / guardrail loop.
+- `prompts.ts`: Groq schema design, critic, and revision calls.
+- `guardrails.ts`: deterministic schema normalization, review, and repair.
+- `fallback.ts`: deterministic evidence-based schema plan.
+- `materializedViews.ts`: reusable Gold MV planning.
+- `render.ts`: SQL and mapping rendering.
+- `types.ts`: schema-generator-local draft and loop types.
+
 Input:
 
 - feature manifest from Spec Parser
@@ -423,7 +434,8 @@ Instrumentation files:
 - `bronzeIngest.ts`: raw spec/event persistence into Bronze.
 - `eventProfiler.ts`: deterministic event profiling.
 - `specParser.ts`: Groq-backed manifest generation plus deterministic fallback/repair.
-- `schemaGenerator.ts`: schema design feedback loop, Silver schema, materialized view plan, and mapping generation.
+- `schemaGenerator.ts`: compatibility export for the schema generator stage.
+- `schema-generator/`: schema design feedback loop, prompts, guardrails, fallback plan, Silver SQL rendering, materialized view plan, and mapping generation.
 - `schemaCritic.ts`: blocking schema review.
 - `silverLoader.ts`: Silver table / materialized view creation, normalization, insert, validation.
 - `contextUpdater.ts`: writes validated context memory.
