@@ -2,6 +2,8 @@
 
 Minimal CLI scaffold for the agentic Medallion pipeline.
 
+For the full intended local flow, see [LOCAL_FLOW.md](./LOCAL_FLOW.md).
+
 ## Run
 
 ```bash
