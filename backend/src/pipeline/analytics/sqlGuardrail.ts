@@ -107,7 +107,106 @@ function validateSql(sql: string, knownTables: Set<string>) {
       "SQL does not reference a known base funnel, silver, gold, or context table.",
     );
   }
+  warnings.push(...findMalformedAggregateIfCalls(normalized));
   return warnings;
+}
+
+function findMalformedAggregateIfCalls(sql: string) {
+  const warnings: string[] = [];
+  for (const functionName of ["uniqIf", "uniqExactIf"]) {
+    let searchFrom = 0;
+    const pattern = new RegExp(`\\b${functionName}\\s*\\(`, "i");
+    let match: RegExpExecArray | null;
+    while ((match = pattern.exec(sql.slice(searchFrom)))) {
+      const openParen = searchFrom + match.index + match[0].lastIndexOf("(");
+      const args = extractCallArguments(sql, openParen);
+      if (!args) {
+        break;
+      }
+      if (splitTopLevelArgs(args).length < 2) {
+        warnings.push(
+          `${functionName} requires a value expression and a condition; use ${functionName}(entity_column, condition).`,
+        );
+      }
+      searchFrom = openParen + args.length + 2;
+    }
+  }
+  return warnings;
+}
+
+function extractCallArguments(sql: string, openParen: number) {
+  let depth = 0;
+  let inString = false;
+  let escaping = false;
+  for (let index = openParen; index < sql.length; index += 1) {
+    const char = sql[index];
+    if (escaping) {
+      escaping = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaping = true;
+      continue;
+    }
+    if (char === "'") {
+      inString = !inString;
+      continue;
+    }
+    if (inString) {
+      continue;
+    }
+    if (char === "(") {
+      depth += 1;
+      continue;
+    }
+    if (char === ")") {
+      depth -= 1;
+      if (depth === 0) {
+        return sql.slice(openParen + 1, index);
+      }
+    }
+  }
+  return null;
+}
+
+function splitTopLevelArgs(args: string) {
+  const parts: string[] = [];
+  let depth = 0;
+  let inString = false;
+  let escaping = false;
+  let start = 0;
+  for (let index = 0; index < args.length; index += 1) {
+    const char = args[index];
+    if (escaping) {
+      escaping = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaping = true;
+      continue;
+    }
+    if (char === "'") {
+      inString = !inString;
+      continue;
+    }
+    if (inString) {
+      continue;
+    }
+    if (char === "(") {
+      depth += 1;
+      continue;
+    }
+    if (char === ")") {
+      depth -= 1;
+      continue;
+    }
+    if (char === "," && depth === 0) {
+      parts.push(args.slice(start, index).trim());
+      start = index + 1;
+    }
+  }
+  parts.push(args.slice(start).trim());
+  return parts.filter(Boolean);
 }
 
 function findLikelyMissingColumns(

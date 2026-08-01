@@ -71,6 +71,7 @@ Return JSON with this shape:
 
 Plan 1-5 ClickHouse queries. Prefer reusable context metrics and tables. Include data quality or baseline queries when the PM asks why, worse, drop, increase, or root cause.
 Always use exact table names from context (silver.<feature>_events for generated features; bare base table names for the 8 existing funnel/support tables).
+Do not plan queries against information_schema, metrics, feature_metrics, or other metadata tables unless they appear explicitly in relevant context.
 When comparing a feature to overall conversion, join feature silver tables to purchase_completed / application_started on user_id or application_id.
 If contradictions mention known issues (e.g. K1 iOS OTP), plan a device/os segment cut to check them.`,
         },

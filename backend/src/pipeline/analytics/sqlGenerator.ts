@@ -12,6 +12,7 @@ import {
 } from "./types.js";
 import {
   compactJson,
+  getClickHouseColumns,
   getKnownClickHouseTables,
   groundSqlTableNames,
   unique,
@@ -45,6 +46,7 @@ export async function runSqlGenerator(input: {
         (table) =>
           table.startsWith("silver.") ||
           table.startsWith("gold.") ||
+          table.startsWith("context.") ||
           !table.includes(".") ||
           table.includes("destination_card") ||
           table.includes("application_started") ||
@@ -56,6 +58,11 @@ export async function runSqlGenerator(input: {
           table.includes("auth_completed"),
       ),
     ]);
+    const liveColumns = await getClickHouseColumns(allowedTables);
+    const columnsByTable = mergeColumnsByTable(
+      catalog.columnsByTable,
+      liveColumns,
+    );
 
     const llmQueries = await callGroqJson<{ queries: GeneratedSqlQuery[] }>({
       traceName: "groq.analytics.sql_generator",
@@ -88,7 +95,7 @@ ALLOWED TABLES (use only these exact names):
 ${allowedTables.map((table) => `- ${table}`).join("\n") || "- (none — return empty queries)"}
 
 ALLOWED COLUMNS BY TABLE (from context memory; prefer these):
-${compactJson(catalog.columnsByTable, 12000)}
+${compactJson(columnsByTable, 16000)}
 
 KNOWN JOINS:
 ${compactJson(catalog.joins, 4000)}
@@ -124,11 +131,13 @@ Return:
 
 Rules:
 - Only SELECT/WITH queries.
+- Return exactly one query object for every planned query id in the Plan. Preserve each planned id exactly.
 - Use ONLY exact table names from ALLOWED TABLES. Generated feature tables are silver.<name>_events. Base funnel tables are bare names (destination_card_clicked, application_started, document_uploaded, purchase_completed, pay_now_clicked, …).
 - Use ONLY columns from ALLOWED COLUMNS when listed for a table.
 - Prefer silver feature tables for feature-specific questions; join base funnel tables for baseline/uplift comparisons via user_id or application_id.
 - Feature event names live in event_name (not a free-text event column) for silver tables. Base tables are one event per table (no event_name column).
 - Use ClickHouse syntax.
+- For conditional unique counts, use uniqExactIf(entity_column, condition). Never call uniqIf with only a condition.
 - Limit exploratory result sets to at most 100 rows.
 - For root-cause questions, include comparison/baseline and segment cuts when available.
 - If allowed tables are empty, return an empty queries array rather than inventing tables.
@@ -183,6 +192,9 @@ function buildSqlCatalog(context: PmRelevantContext, plan: AnalysisPlan) {
       ...context.workflows.map((workflow) => workflow.table_name),
       ...context.columns.map((column) => column.table_name),
       ...context.joins.flatMap((join) => [join.left_table, join.right_table]),
+      "context.metric_registry",
+      "context.column_registry",
+      "context.feature_registry",
     ]
       .filter(Boolean)
       .filter((table) => !table.includes("|") && !table.includes("*"))
@@ -218,6 +230,23 @@ function buildSqlCatalog(context: PmRelevantContext, plan: AnalysisPlan) {
     joins: context.joins.slice(0, 30),
     metrics: context.metrics.slice(0, 20),
   };
+}
+
+function mergeColumnsByTable(
+  contextColumnsByTable: Record<string, string[]>,
+  liveColumns: Array<{ table_name: string; column_name: string }>,
+) {
+  const columnsByTable: Record<string, string[]> = {};
+  for (const [table, columns] of Object.entries(contextColumnsByTable)) {
+    columnsByTable[table] = [...columns];
+  }
+  for (const column of liveColumns) {
+    columnsByTable[column.table_name] ??= [];
+    if (!columnsByTable[column.table_name].includes(column.column_name)) {
+      columnsByTable[column.table_name].push(column.column_name);
+    }
+  }
+  return columnsByTable;
 }
 
 function repairGeneratedQueries(

@@ -159,6 +159,14 @@ export async function runAnalyticsAsk(input: {
         if (!evidencePack) {
           throw new Error("Analytics ask loop ended without an evidence pack.");
         }
+        if (!evidencePack.evaluation.passed) {
+          throw new Error(
+            `Analytics evidence evaluation failed after ${MAX_ANALYTICS_ATTEMPTS} attempt(s): ${[
+              ...evidencePack.evaluation.evidence_gaps,
+              ...evidencePack.evaluation.repair_notes,
+            ].join("; ")}`,
+          );
+        }
 
         const draft = await runInsightSynthesizer({
           jobId,
