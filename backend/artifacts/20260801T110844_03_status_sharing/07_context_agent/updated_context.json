@@ -1,28 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-08-01T11:09:09.708Z",
+  "updated_at": "2026-08-01T11:08:47.729Z",
   "features": [
-    {
-      "feature_slug": "abandoned_checkout_recovery",
-      "table_name": "abandoned_checkout_recovery_events",
-      "primary_entity": "application_id",
-      "event_names": [
-        "abandonment_detected",
-        "reminder_sent",
-        "reminder_opened",
-        "reminder_cta_clicked",
-        "resumed_at_step",
-        "reconverted"
-      ],
-      "success_event": "reconverted",
-      "metric_hints": [
-        "reconversion_rate_by_drop_step",
-        "channel_effectiveness_on_reconversion",
-        "timing_effect_on_reconversion",
-        "segment_based_reconversion_rate"
-      ],
-      "added_at": "2026-08-01T11:08:59.661Z"
-    },
     {
       "feature_slug": "express_checkout",
       "table_name": "express_checkout_events",
@@ -82,7 +61,7 @@
         "best_attach_destinations",
         "segment_skew_by_device_geo"
       ],
-      "added_at": "2026-08-01T11:09:09.708Z"
+      "added_at": "2026-08-01T10:21:41.440Z"
     },
     {
       "feature_slug": "status_sharing",

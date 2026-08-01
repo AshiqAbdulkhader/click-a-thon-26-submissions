@@ -1,0 +1,238 @@
+{
+  "feature_slug": "abandoned_checkout_recovery",
+  "row_count": 5919,
+  "event_counts": {
+    "abandonment_detected": 2300,
+    "reminder_sent": 2300,
+    "reminder_opened": 690,
+    "reminder_cta_clicked": 268,
+    "resumed_at_step": 268,
+    "reconverted": 93
+  },
+  "event_order": [
+    "abandonment_detected",
+    "reminder_sent",
+    "reminder_opened",
+    "reminder_cta_clicked",
+    "resumed_at_step",
+    "reconverted"
+  ],
+  "fields": [
+    {
+      "path": "app_version",
+      "count": 5919,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "7.44.0",
+        "7.45.2",
+        "7.46.0"
+      ]
+    },
+    {
+      "path": "application_id",
+      "count": 5919,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "460a15c7968153c2a7bf3f8670b856df",
+        "3f7563cd3ebbf4471ac9158fc519b4aa",
+        "516cd8c1e6884f76f8c5ea8ff0aa2e3d",
+        "25301d5003030776b76fe794fcfe7efe",
+        "32fb3f84179c1cf71dd1657b82a32285"
+      ]
+    },
+    {
+      "path": "channel",
+      "count": 3619,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "push",
+        "email",
+        "whatsapp"
+      ]
+    },
+    {
+      "path": "city",
+      "count": 5919,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "Dubai",
+        "Mumbai",
+        "New York",
+        "London",
+        "Riyadh"
+      ]
+    },
+    {
+      "path": "client_lib",
+      "count": 5919,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "mobile-rn",
+        "web-js"
+      ]
+    },
+    {
+      "path": "destination",
+      "count": 5919,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "US",
+        "SG",
+        "TR",
+        "EG",
+        "ID"
+      ]
+    },
+    {
+      "path": "device_type",
+      "count": 5919,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "ios",
+        "android",
+        "web-user-b2c",
+        "Desktop"
+      ]
+    },
+    {
+      "path": "drop_step",
+      "count": 5919,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "destination_card_clicked",
+        "document_uploaded",
+        "pay_now_clicked",
+        "application_started"
+      ]
+    },
+    {
+      "path": "event",
+      "count": 5919,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "abandonment_detected",
+        "reminder_sent",
+        "reminder_opened",
+        "reminder_cta_clicked",
+        "resumed_at_step"
+      ]
+    },
+    {
+      "path": "geoip_country_code",
+      "count": 5919,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "AE",
+        "IN",
+        "US",
+        "GB",
+        "SA"
+      ]
+    },
+    {
+      "path": "hours_since_drop",
+      "count": 2300,
+      "null_count": 0,
+      "types": [
+        "number"
+      ],
+      "sample_values": [
+        48,
+        3,
+        24,
+        6,
+        1
+      ]
+    },
+    {
+      "path": "id",
+      "count": 5919,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "d4702082099d1b693602090ce98de4c3",
+        "42b1b927151908441896cc17563e784d",
+        "8a25e8b792c870e56741e022c635e91b",
+        "02ae0b7d1c04208fe8d434067c0f5943",
+        "e55f6f8f03c618820a9d632623ca31c9"
+      ]
+    },
+    {
+      "path": "os",
+      "count": 5919,
+      "null_count": 294,
+      "types": [
+        "string",
+        "null"
+      ],
+      "sample_values": [
+        "iOS",
+        "Android",
+        "Mac OS X",
+        "Windows"
+      ]
+    },
+    {
+      "path": "timestamp",
+      "count": 5919,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "2026-06-08T06:01:00.000",
+        "2026-06-08T06:02:00.000",
+        "2026-06-08T06:05:00.000",
+        "2026-06-08T07:00:00.000",
+        "2026-06-08T07:04:00.000"
+      ]
+    },
+    {
+      "path": "user_id",
+      "count": 5919,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "j6PKzLh3ZHCwG5yJ7s9QDuQtSgNO",
+        "VC1xCWa6ktcHhOPIebE314MYYHXD",
+        "aS4vF0uUJeZsbWpwRu1CY0PI7fYC",
+        "nBiaACvOnXs5B6WCGO0tZf72MItV",
+        "FbuN2ydzTbFbrZhUIx3UH3Vgvnif"
+      ]
+    }
+  ]
+}

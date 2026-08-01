@@ -1,0 +1,9 @@
+{
+  "job_id": "20260801T110826_02_group_family",
+  "feature_slug": "group_family",
+  "spec_path": "/Users/shivamtaneja/projects/clickhouse/schema-kings-clickathon/specs/02_group_family/spec.md",
+  "events_path": "/Users/shivamtaneja/projects/clickhouse/schema-kings-clickathon/specs/02_group_family/events.ndjson",
+  "spec_bytes": 1196,
+  "events_bytes": 2609588,
+  "ingested_at": "2026-08-01T11:08:26.724Z"
+}

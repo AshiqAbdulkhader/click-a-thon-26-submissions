@@ -1,0 +1,20 @@
+{
+  "job_id": "20260801T110857_04_abandoned_checkout_recovery",
+  "feature_slug": "abandoned_checkout_recovery",
+  "table_name": "silver.abandoned_checkout_recovery_events",
+  "row_count": 5919,
+  "event_names": [
+    "abandonment_detected",
+    "reminder_sent",
+    "reminder_opened",
+    "reminder_cta_clicked",
+    "resumed_at_step",
+    "reconverted"
+  ],
+  "primary_entity": "application_id",
+  "success_event": "reconverted",
+  "artifacts": "/Users/shivamtaneja/projects/clickhouse/schema-kings-clickathon/backend/artifacts/20260801T110857_04_abandoned_checkout_recovery",
+  "model": "openai/gpt-oss-20b",
+  "groq_used": true,
+  "langfuse_trace_id": "810b13a765655f31c00a52481b3eed7c"
+}

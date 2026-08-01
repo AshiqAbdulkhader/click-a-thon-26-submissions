@@ -1,28 +1,7 @@
 {
   "version": 1,
-  "updated_at": "2026-08-01T11:09:09.708Z",
+  "updated_at": "2026-08-01T11:08:13.379Z",
   "features": [
-    {
-      "feature_slug": "abandoned_checkout_recovery",
-      "table_name": "abandoned_checkout_recovery_events",
-      "primary_entity": "application_id",
-      "event_names": [
-        "abandonment_detected",
-        "reminder_sent",
-        "reminder_opened",
-        "reminder_cta_clicked",
-        "resumed_at_step",
-        "reconverted"
-      ],
-      "success_event": "reconverted",
-      "metric_hints": [
-        "reconversion_rate_by_drop_step",
-        "channel_effectiveness_on_reconversion",
-        "timing_effect_on_reconversion",
-        "segment_based_reconversion_rate"
-      ],
-      "added_at": "2026-08-01T11:08:59.661Z"
-    },
     {
       "feature_slug": "express_checkout",
       "table_name": "express_checkout_events",
@@ -41,25 +20,6 @@
         "segment_comparison"
       ],
       "added_at": "2026-08-01T11:08:13.379Z"
-    },
-    {
-      "feature_slug": "group_family",
-      "table_name": "group_family_events",
-      "primary_entity": "group_id",
-      "event_names": [
-        "group_started",
-        "traveller_added",
-        "traveller_removed",
-        "group_submitted"
-      ],
-      "success_event": "group_submitted",
-      "metric_hints": [
-        "group_started_to_group_submitted_completion_rate_by_group_size",
-        "traveller_add_remove_churn_rate",
-        "docs_complete_bottleneck_by_group_size",
-        "destination_segment_group_application_rate"
-      ],
-      "added_at": "2026-08-01T11:08:28.597Z"
     },
     {
       "feature_slug": "instant_forex",
@@ -82,7 +42,7 @@
         "best_attach_destinations",
         "segment_skew_by_device_geo"
       ],
-      "added_at": "2026-08-01T11:09:09.708Z"
+      "added_at": "2026-08-01T10:21:41.440Z"
     },
     {
       "feature_slug": "status_sharing",
@@ -97,12 +57,12 @@
       ],
       "success_event": "recipient_cta_clicked",
       "metric_hints": [
-        "share_rate",
-        "channel_mix",
-        "new_user_open_rate",
-        "recipient_cta_rate"
+        "share_rate_by_status_shared",
+        "channel_mix_by_share",
+        "new_user_link_opens_by_channel",
+        "k_factor_recipient_conversion"
       ],
-      "added_at": "2026-08-01T11:08:47.729Z"
+      "added_at": "2026-08-01T10:20:38.404Z"
     }
   ],
   "contradictions": [

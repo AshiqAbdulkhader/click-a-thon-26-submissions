@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-08-01T11:09:09.708Z",
+  "updated_at": "2026-08-01T11:08:59.661Z",
   "features": [
     {
       "feature_slug": "abandoned_checkout_recovery",
@@ -82,7 +82,7 @@
         "best_attach_destinations",
         "segment_skew_by_device_geo"
       ],
-      "added_at": "2026-08-01T11:09:09.708Z"
+      "added_at": "2026-08-01T10:21:41.440Z"
     },
     {
       "feature_slug": "status_sharing",

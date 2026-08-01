@@ -1,0 +1,278 @@
+{
+  "feature_slug": "group_family",
+  "row_count": 5453,
+  "event_counts": {
+    "group_started": 1200,
+    "traveller_added": 3495,
+    "traveller_removed": 70,
+    "group_submitted": 688
+  },
+  "event_order": [
+    "group_started",
+    "traveller_added",
+    "traveller_removed",
+    "group_submitted"
+  ],
+  "fields": [
+    {
+      "path": "app_version",
+      "count": 5453,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "7.45.2",
+        "7.46.0",
+        "7.44.0"
+      ]
+    },
+    {
+      "path": "application_id",
+      "count": 5453,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "0feeada6c7a9067c904af24945afc7ad",
+        "2f237cdd9f4a90795170266b518692e4",
+        "e3c9b502ef0ec0147559c8024c750523",
+        "6b65cb589e5ba9fc76b2a2c2396a6e26",
+        "4ffb4ef7a187a91f19434d98234acd07"
+      ]
+    },
+    {
+      "path": "city",
+      "count": 5453,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "New York",
+        "Mumbai",
+        "Sydney",
+        "Dubai",
+        "Singapore"
+      ]
+    },
+    {
+      "path": "client_lib",
+      "count": 5453,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "mobile-rn",
+        "web-js"
+      ]
+    },
+    {
+      "path": "destination",
+      "count": 5453,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "MY",
+        "GB",
+        "SG",
+        "TH",
+        "VN"
+      ]
+    },
+    {
+      "path": "device_type",
+      "count": 5453,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "ios",
+        "android",
+        "web-user-b2c",
+        "Desktop"
+      ]
+    },
+    {
+      "path": "docs_complete",
+      "count": 3495,
+      "null_count": 0,
+      "types": [
+        "boolean"
+      ],
+      "sample_values": [
+        false,
+        true
+      ]
+    },
+    {
+      "path": "event",
+      "count": 5453,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "group_started",
+        "traveller_added",
+        "traveller_removed",
+        "group_submitted"
+      ]
+    },
+    {
+      "path": "geoip_country_code",
+      "count": 5453,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "US",
+        "IN",
+        "AU",
+        "AE",
+        "SG"
+      ]
+    },
+    {
+      "path": "group_id",
+      "count": 5453,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "bbf2f2a6c4a90bd16dda79286354bd96",
+        "746017524613370de44a9069882ab8fe",
+        "b3c2d2eca9a3d5cc68b98ab63df91db8",
+        "5736364603dd8559ea01a11f4015210a",
+        "9e498c99c864a909c325e07fc7b0159f"
+      ]
+    },
+    {
+      "path": "group_size",
+      "count": 5453,
+      "null_count": 0,
+      "types": [
+        "number"
+      ],
+      "sample_values": [
+        2,
+        5,
+        3,
+        4,
+        6
+      ]
+    },
+    {
+      "path": "id",
+      "count": 5453,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "17e63e1da1cd81d146fdaa877fb56995",
+        "80f62fa4fd3a978d8958a9c68f3b161f",
+        "eb962517c382485b98d3edb445531610",
+        "0cf7031bc90ff61c537d142554a74c51",
+        "96f99b2b10dfd8709c608c5f2fc7f145"
+      ]
+    },
+    {
+      "path": "os",
+      "count": 5453,
+      "null_count": 345,
+      "types": [
+        "string",
+        "null"
+      ],
+      "sample_values": [
+        "iOS",
+        "Android",
+        "Windows",
+        "Mac OS X"
+      ]
+    },
+    {
+      "path": "relation",
+      "count": 3495,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "spouse",
+        "child",
+        "sibling",
+        "parent",
+        "friend"
+      ]
+    },
+    {
+      "path": "timestamp",
+      "count": 5453,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "2026-06-08T06:01:00.000",
+        "2026-06-08T06:02:00.000",
+        "2026-06-08T06:03:00.000",
+        "2026-06-08T06:04:00.000",
+        "2026-06-08T06:05:00.000"
+      ]
+    },
+    {
+      "path": "traveller_index",
+      "count": 3565,
+      "null_count": 0,
+      "types": [
+        "number"
+      ],
+      "sample_values": [
+        0,
+        2,
+        1,
+        3,
+        4
+      ]
+    },
+    {
+      "path": "travellers_submitted",
+      "count": 688,
+      "null_count": 0,
+      "types": [
+        "number"
+      ],
+      "sample_values": [
+        2,
+        5,
+        3,
+        4,
+        1
+      ]
+    },
+    {
+      "path": "user_id",
+      "count": 5453,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "YUj2lPCIJjgUHDZcXNYqER2a9geI",
+        "pBSPTgki0N477FuXTofB8WYE0lW0",
+        "mgwA01VPMS3bUrR391EeTEyRUjCp",
+        "7nWW7mYZ36N17o72DzZ2APsiVTha",
+        "LGf3XjeoImxpA5lLAqRaesroNFKY"
+      ]
+    }
+  ]
+}

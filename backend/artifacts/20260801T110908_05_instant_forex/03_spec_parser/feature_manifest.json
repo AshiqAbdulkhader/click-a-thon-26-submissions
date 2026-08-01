@@ -1,0 +1,26 @@
+{
+  "feature_slug": "instant_forex",
+  "feature_name": "Instant Forex Add-on",
+  "primary_entity": "application_id",
+  "workflow_type": "funnel",
+  "event_order": [
+    "forex_offer_shown",
+    "currency_selected",
+    "amount_entered",
+    "forex_added_to_cart",
+    "forex_purchased"
+  ],
+  "success_event": "forex_purchased",
+  "metric_hints": [
+    "attach_rate_overall",
+    "attach_rate_by_destination",
+    "aov_uplift_distribution",
+    "drop_off_offer_to_amount_entered",
+    "drop_off_added_to_cart_to_purchased",
+    "best_attach_destinations",
+    "segment_skew_by_device_geo"
+  ],
+  "context_notes": [
+    "Primary entity is application_id; events are part of a linear add‑on funnel; success is forex_purchased; metrics focus on attach rates, AOV uplift, drop‑off points, and segment skew."
+  ]
+}

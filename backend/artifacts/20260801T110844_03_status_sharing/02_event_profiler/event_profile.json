@@ -1,0 +1,259 @@
+{
+  "feature_slug": "status_sharing",
+  "row_count": 6503,
+  "event_counts": {
+    "share_clicked": 1600,
+    "channel_selected": 1144,
+    "link_generated": 1144,
+    "link_opened": 2310,
+    "recipient_cta_clicked": 305
+  },
+  "event_order": [
+    "share_clicked",
+    "channel_selected",
+    "link_generated",
+    "link_opened",
+    "recipient_cta_clicked"
+  ],
+  "fields": [
+    {
+      "path": "app_version",
+      "count": 3888,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "7.46.0",
+        "7.44.0",
+        "7.45.2"
+      ]
+    },
+    {
+      "path": "application_id",
+      "count": 3888,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "19b40477759894966e506941a9170d4d",
+        "bebcceae82d93220c1a523a2c3c07e01",
+        "dcf8bfaab6e8bf56d61b5f76c76100fc",
+        "bbfbcb360026ec2234bef37e3176ee12",
+        "34cd702ecf73fb1ca1dd71dc9a2ca5ef"
+      ]
+    },
+    {
+      "path": "channel",
+      "count": 4598,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "whatsapp",
+        "email",
+        "copy_link",
+        "sms"
+      ]
+    },
+    {
+      "path": "city",
+      "count": 3888,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "Singapore",
+        "Mumbai",
+        "Sydney",
+        "New York",
+        "Dubai"
+      ]
+    },
+    {
+      "path": "client_lib",
+      "count": 3888,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "mobile-rn",
+        "web-js"
+      ]
+    },
+    {
+      "path": "cta",
+      "count": 305,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "start_own_application"
+      ]
+    },
+    {
+      "path": "destination",
+      "count": 6503,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "FR",
+        "GB",
+        "AU",
+        "TR",
+        "SG"
+      ]
+    },
+    {
+      "path": "device_type",
+      "count": 3888,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "ios",
+        "web-user-b2c",
+        "Desktop",
+        "android"
+      ]
+    },
+    {
+      "path": "event",
+      "count": 6503,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "share_clicked",
+        "channel_selected",
+        "link_generated",
+        "link_opened",
+        "recipient_cta_clicked"
+      ]
+    },
+    {
+      "path": "geoip_country_code",
+      "count": 3888,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "SG",
+        "IN",
+        "AU",
+        "US",
+        "AE"
+      ]
+    },
+    {
+      "path": "id",
+      "count": 6503,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "dcfda1c055d6183a564f0d4cd577a181",
+        "9aa2cd8b82723b1d56d14d787389b512",
+        "271919c6b60b48369c72c53cf1747df4",
+        "30e822056fa58fd7014fb40686732237",
+        "d862a348c77c2be980e0e67e8684cba4"
+      ]
+    },
+    {
+      "path": "os",
+      "count": 3888,
+      "null_count": 205,
+      "types": [
+        "string",
+        "null"
+      ],
+      "sample_values": [
+        "iOS",
+        "Mac OS X",
+        "Windows",
+        "Android"
+      ]
+    },
+    {
+      "path": "recipient_is_new_user",
+      "count": 2310,
+      "null_count": 0,
+      "types": [
+        "boolean"
+      ],
+      "sample_values": [
+        false,
+        true
+      ]
+    },
+    {
+      "path": "share_id",
+      "count": 6503,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "e060617d3920f7a3e6e7f0c249b88dd6",
+        "3649b351bfd943737a70db2574b26d38",
+        "9280f82971b84e5996ab9e7e9afa00f3",
+        "815ddc81218ee12b800ee54067daebc3",
+        "0c375689e8ada76af63051398eba4457"
+      ]
+    },
+    {
+      "path": "status_shared",
+      "count": 3888,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "processing",
+        "submitted",
+        "approved"
+      ]
+    },
+    {
+      "path": "timestamp",
+      "count": 6503,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "2026-06-08T06:00:00.000",
+        "2026-06-08T06:01:00.000",
+        "2026-06-08T06:03:00.000",
+        "2026-06-08T06:04:00.000",
+        "2026-06-08T07:00:00.000"
+      ]
+    },
+    {
+      "path": "user_id",
+      "count": 3888,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "SznWQvfhG4fWi6LPzkXIyRvY0oro",
+        "sXxBNToHKgos73VD2GdgNDlE1mm5",
+        "PCtQo4zsQ5r7QfjgzJLWylGg0iWX",
+        "562qmJaHl6tLMaRS18lF5toVp9Oh",
+        "WLYMx770iRwhdbtK7HpF5efoUxCG"
+      ]
+    }
+  ]
+}

@@ -1,0 +1,9 @@
+{
+  "job_id": "20260801T110857_04_abandoned_checkout_recovery",
+  "feature_slug": "abandoned_checkout_recovery",
+  "spec_path": "/Users/shivamtaneja/projects/clickhouse/schema-kings-clickathon/specs/04_abandoned_checkout_recovery/spec.md",
+  "events_path": "/Users/shivamtaneja/projects/clickhouse/schema-kings-clickathon/specs/04_abandoned_checkout_recovery/events.ndjson",
+  "spec_bytes": 1288,
+  "events_bytes": 2521451,
+  "ingested_at": "2026-08-01T11:08:57.991Z"
+}

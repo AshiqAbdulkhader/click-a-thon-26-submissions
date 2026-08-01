@@ -1,0 +1,110 @@
+{
+  "table_name": "silver.group_family_events",
+  "mappings": [
+    {
+      "column": "job_id",
+      "source_path": null,
+      "transform": "set from pipeline job_id"
+    },
+    {
+      "column": "event_name",
+      "source_path": "event",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "event_id",
+      "source_path": "id",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "timestamp",
+      "source_path": "timestamp",
+      "transform": "parse ISO timestamp to DateTime64(3)"
+    },
+    {
+      "column": "app_version",
+      "source_path": "app_version",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "application_id",
+      "source_path": "application_id",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "city",
+      "source_path": "city",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "client_lib",
+      "source_path": "client_lib",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "destination",
+      "source_path": "destination",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "device_type",
+      "source_path": "device_type",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "docs_complete",
+      "source_path": "docs_complete",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "geoip_country_code",
+      "source_path": "geoip_country_code",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "group_id",
+      "source_path": "group_id",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "group_size",
+      "source_path": "group_size",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "os",
+      "source_path": "os",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "relation",
+      "source_path": "relation",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "traveller_index",
+      "source_path": "traveller_index",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "travellers_submitted",
+      "source_path": "travellers_submitted",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "user_id",
+      "source_path": "user_id",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "raw_json",
+      "source_path": null,
+      "transform": "serialize original event JSON"
+    },
+    {
+      "column": "ingested_at",
+      "source_path": null,
+      "transform": "ClickHouse DEFAULT now()"
+    }
+  ]
+}

@@ -1,0 +1,18 @@
+{
+  "job_id": "20260801T110826_02_group_family",
+  "feature_slug": "group_family",
+  "table_name": "silver.group_family_events",
+  "row_count": 5453,
+  "event_names": [
+    "group_started",
+    "traveller_added",
+    "traveller_removed",
+    "group_submitted"
+  ],
+  "primary_entity": "group_id",
+  "success_event": "group_submitted",
+  "artifacts": "/Users/shivamtaneja/projects/clickhouse/schema-kings-clickathon/backend/artifacts/20260801T110826_02_group_family",
+  "model": "openai/gpt-oss-20b",
+  "groq_used": true,
+  "langfuse_trace_id": "a66b3d3e650b69676267f342d13891ac"
+}

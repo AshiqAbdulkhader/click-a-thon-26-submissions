@@ -1,0 +1,24 @@
+{
+  "feature_slug": "abandoned_checkout_recovery",
+  "feature_name": "Abandoned Checkout Recovery",
+  "primary_entity": "application_id",
+  "workflow_type": "recovery",
+  "event_order": [
+    "abandonment_detected",
+    "reminder_sent",
+    "reminder_opened",
+    "reminder_cta_clicked",
+    "resumed_at_step",
+    "reconverted"
+  ],
+  "success_event": "reconverted",
+  "metric_hints": [
+    "reconversion_rate_by_drop_step",
+    "channel_effectiveness_on_reconversion",
+    "timing_effect_on_reconversion",
+    "segment_based_reconversion_rate"
+  ],
+  "context_notes": [
+    "Recovery workflow for abandoned checkout, primary entity application_id, success event reconverted, metrics focus on drop_step, channel, timing, segments."
+  ]
+}

@@ -1,0 +1,136 @@
+{
+  "database": "silver",
+  "table_name": "status_sharing_events",
+  "engine": "ReplacingMergeTree",
+  "partition_by": "toYYYYMM(timestamp)",
+  "order_by": [
+    "event_name",
+    "timestamp",
+    "share_id",
+    "user_id",
+    "event_id"
+  ],
+  "ttl": "timestamp + INTERVAL 18 MONTH",
+  "columns": [
+    {
+      "name": "job_id",
+      "type": "String",
+      "source_path": null,
+      "reason": "Pipeline run identifier for replay and trace joins."
+    },
+    {
+      "name": "event_name",
+      "type": "LowCardinality(String)",
+      "source_path": "event",
+      "reason": "Common event discriminator for funnel and step analysis."
+    },
+    {
+      "name": "event_id",
+      "type": "String",
+      "source_path": "id",
+      "reason": "Raw event identifier used for dedupe and audit."
+    },
+    {
+      "name": "timestamp",
+      "type": "DateTime64(3)",
+      "source_path": "timestamp",
+      "reason": "Primary time dimension for partitions and sequence analysis."
+    },
+    {
+      "name": "app_version",
+      "type": "Nullable(LowCardinality(String))",
+      "source_path": "app_version",
+      "reason": "Atlys common envelope field."
+    },
+    {
+      "name": "application_id",
+      "type": "Nullable(String)",
+      "source_path": "application_id",
+      "reason": "Atlys common envelope field."
+    },
+    {
+      "name": "channel",
+      "type": "Nullable(LowCardinality(String))",
+      "source_path": "channel",
+      "reason": "Feature-specific field inferred from raw events."
+    },
+    {
+      "name": "city",
+      "type": "Nullable(LowCardinality(String))",
+      "source_path": "city",
+      "reason": "Atlys common envelope field."
+    },
+    {
+      "name": "client_lib",
+      "type": "Nullable(LowCardinality(String))",
+      "source_path": "client_lib",
+      "reason": "Atlys common envelope field."
+    },
+    {
+      "name": "cta",
+      "type": "Nullable(LowCardinality(String))",
+      "source_path": "cta",
+      "reason": "Feature-specific field inferred from raw events."
+    },
+    {
+      "name": "destination",
+      "type": "LowCardinality(String)",
+      "source_path": "destination",
+      "reason": "Atlys common envelope field."
+    },
+    {
+      "name": "device_type",
+      "type": "Nullable(LowCardinality(String))",
+      "source_path": "device_type",
+      "reason": "Atlys common envelope field."
+    },
+    {
+      "name": "geoip_country_code",
+      "type": "Nullable(LowCardinality(String))",
+      "source_path": "geoip_country_code",
+      "reason": "Atlys common envelope field."
+    },
+    {
+      "name": "os",
+      "type": "Nullable(LowCardinality(String))",
+      "source_path": "os",
+      "reason": "Atlys common envelope field."
+    },
+    {
+      "name": "recipient_is_new_user",
+      "type": "Nullable(Bool)",
+      "source_path": "recipient_is_new_user",
+      "reason": "Feature-specific field inferred from raw events."
+    },
+    {
+      "name": "share_id",
+      "type": "String",
+      "source_path": "share_id",
+      "reason": "Feature-specific field inferred from raw events."
+    },
+    {
+      "name": "status_shared",
+      "type": "Nullable(LowCardinality(String))",
+      "source_path": "status_shared",
+      "reason": "Feature-specific field inferred from raw events."
+    },
+    {
+      "name": "user_id",
+      "type": "Nullable(String)",
+      "source_path": "user_id",
+      "reason": "Atlys common envelope field."
+    },
+    {
+      "name": "raw_json",
+      "type": "String",
+      "source_path": null,
+      "reason": "Lossless raw payload for audit, replay, and schema evolution."
+    },
+    {
+      "name": "ingested_at",
+      "type": "DateTime DEFAULT now()",
+      "source_path": null,
+      "reason": "Operational ingest timestamp."
+    }
+  ]
+}
