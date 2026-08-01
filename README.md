@@ -5,20 +5,21 @@ Welcome! This repository collects all project submissions for **Click-a-thon 202
 ## How to Submit
 
 1. **Fork** this repository.
-2. Create a folder for your project at the root of the repo, named after your team or project:
+2. Create a folder at the root of the repo, named after your **team** — your team name is your unique identifier:
 
    ```
-   your-project-name/
+   your-team-name/
    ```
 
 3. Inside your folder, include:
    - Your project source code
    - A `README.md` describing your project (see the template below)
+   - **A pitch deck in PDF format (mandatory)** — e.g. `pitch-deck.pdf`
    - Any assets, screenshots, or demo links
 4. Open a **pull request** against this repository with the title:
 
    ```
-   [Submission] Your Project Name
+   [Submission] Your Team Name
    ```
 
 ## Submission README Template
@@ -26,9 +27,12 @@ Welcome! This repository collects all project submissions for **Click-a-thon 202
 Your project's `README.md` should cover:
 
 ```markdown
-# Project Name
+# Team Name
 
-## Team
+## Project
+Your project's name and a one-line tagline.
+
+## Team Members
 - Name (GitHub handle)
 
 ## What it does
@@ -49,7 +53,7 @@ Link to a live demo or video, if available.
 - All code must be written during the hackathon period.
 - Third-party libraries and open-source tools are allowed.
 - Each team submits one project via a single pull request.
-- Keep your submission self-contained within your project folder.
+- Keep your submission self-contained within your team's folder.
 
 ## License
 
