@@ -103,15 +103,29 @@ function validateSql(sql: string, knownTables: Set<string>) {
   }
   // Block raw row dumps that are not aggregates (burns tokens + confuses insight).
   const hasAggregate =
-    /\b(count|uniq|uniqExact|uniqExactIf|sum|avg|quantile|min|max|group by)\b/i.test(
+    /\b(count|uniq|uniqExact|uniqExactIf|sum|avg|avgIf|quantile|min|max|group by)\b/i.test(
       normalized,
     );
   const selectsStar = /select\s+\*\s+from\b/i.test(normalized);
+  const selectList =
+    normalized.match(/select\s+([\s\S]+?)\s+from\b/i)?.[1] ?? "";
+  const selectColumns = selectList
+    .split(",")
+    .map((part) => part.trim())
+    .filter(Boolean);
+  const looksLikeWideEntitySelect =
+    !hasAggregate &&
+    selectColumns.length >= 5 &&
+    /\b(id|user_id|application_id|timestamp|device_type|raw_json|client_ip)\b/i.test(
+      selectList,
+    );
   const looksLikeRawEntityDump =
     !hasAggregate &&
-    /\b(user_id|application_id|raw_json)\b/i.test(normalized) &&
+    /\b(user_id|application_id|raw_json|client_ip|latitude|longitude)\b/i.test(
+      normalized,
+    ) &&
     /\bfrom\b/i.test(normalized);
-  if (selectsStar || looksLikeRawEntityDump) {
+  if (selectsStar || looksLikeRawEntityDump || looksLikeWideEntitySelect) {
     warnings.push(
       "Raw row dumps are blocked; use aggregated analytics SQL (count/uniq/group by).",
     );
