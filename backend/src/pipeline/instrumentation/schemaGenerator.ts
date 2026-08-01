@@ -334,6 +334,7 @@ async function requestSchemaDesignDraft(
 ): Promise<SchemaDesignDraft | null> {
   try {
     const draft = await callGroqJson<SchemaDesignDraft>({
+      model: process.env.GROQ_SCHEMA_MODEL ?? "llama-3.1-8b-instant",
       strictJson: false,
       temperature: 0,
       maxTokens: 3500,

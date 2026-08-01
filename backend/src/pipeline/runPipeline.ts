@@ -112,10 +112,15 @@ export async function runPipeline(input: RunPipelineInput) {
         "12_trace_summary",
       ]);
 
+      console.log("");
+      console.log("Pipeline stage status:");
       for (const stage of pipelineStages) {
-        const status = completedStages.has(stage.id) ? "done" : "todo";
+        const status = completedStages.has(stage.id) ? "done" : "planned";
         console.log(`[${status}] ${stage.id}: ${stage.name}`);
       }
+      console.log(
+        "[planned] stages are reserved for the Analytics Agent harness and are not executed by this instrumentation run yet.",
+      );
 
       const runSummary = {
         job_id: jobId,
