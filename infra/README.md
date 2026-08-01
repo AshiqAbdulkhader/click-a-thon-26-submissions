@@ -1,8 +1,10 @@
-# Local Infrastructure
+# Infrastructure
 
-This folder supports local development for the Schema Kings pipeline.
+This folder supports local development for the Schema Kings pipeline. The app
+ClickHouse instance is the primary datastore for base data, generated Silver
+tables, context memory, and pipeline tracking.
 
-## Start app ClickHouse only
+## Start App ClickHouse Only
 
 ```bash
 docker compose up -d clickhouse
@@ -31,7 +33,7 @@ Useful URLs/ports:
 The Langfuse stack is intentionally separate from the app ClickHouse instance.
 That keeps product analytics data separate from observability data.
 
-## Environment overrides
+## Environment Overrides
 
 Copy `.env.docker.example` to `.env.docker` and run:
 
@@ -40,13 +42,33 @@ docker compose --env-file .env.docker up -d clickhouse
 docker compose --env-file .env.docker --profile langfuse up -d
 ```
 
-## Current databases
+## App ClickHouse Databases
 
-The app ClickHouse init script creates:
+The app ClickHouse init scripts create:
 
 - `bronze`
 - `silver`
 - `gold`
+- `context`
+- `ops`
 
-It also creates placeholder Bronze and Gold tables so the CLI has stable local
-targets once implementation begins.
+Key tables:
+
+```text
+bronze.feature_specs
+bronze.feature_events
+gold.feature_metrics
+gold.feature_insights
+context.context_documents
+context.feature_registry
+context.fact_registry
+context.contradictions
+ops.pipeline_runs
+ops.pipeline_stages
+```
+
+The provided Atlys base tables are loaded separately by `data/load.sh` into the
+`schema_kings` database.
+
+See `LOCAL_TO_PROD_RUNBOOK.md` for the exact reset, load, bootstrap, and demo
+commands.
