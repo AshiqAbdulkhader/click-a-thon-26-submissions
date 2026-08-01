@@ -53,6 +53,9 @@ cd data
 CH='clickhouse client --host <host>.ap-south-1.aws.clickhouse.cloud --user default --password YOUR_PASSWORD --secure' \
 DB=atlys \
 ./load.sh
+
+clickhouse client --host <host>.ap-south-1.aws.clickhouse.cloud --user default --password YOUR_PASSWORD --secure \
+  --query "SELECT count() FROM atlys.destination_card_clicked"
 ```
 
 ### 3. Setup + specs + UI
