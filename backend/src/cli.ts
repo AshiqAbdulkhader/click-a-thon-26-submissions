@@ -1,3 +1,4 @@
+import "dotenv/config";
 import { runPipeline } from "./pipeline/runPipeline.js";
 import { runMockLangfuseTrace } from "./tracing/mockTrace.js";
 

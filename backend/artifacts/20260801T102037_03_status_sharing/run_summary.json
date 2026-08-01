@@ -1,0 +1,18 @@
+{
+  "job_id": "20260801T102037_03_status_sharing",
+  "feature_slug": "status_sharing",
+  "table_name": "silver.status_sharing_events",
+  "row_count": 6503,
+  "event_names": [
+    "share_clicked",
+    "channel_selected",
+    "link_generated",
+    "link_opened",
+    "recipient_cta_clicked"
+  ],
+  "primary_entity": "share_id",
+  "success_event": "recipient_cta_clicked",
+  "artifacts": "/Users/shivamtaneja/projects/clickhouse/schema-kings-clickathon/backend/artifacts/20260801T102037_03_status_sharing",
+  "model": "openai/gpt-oss-20b",
+  "groq_used": true
+}

@@ -1,0 +1,9 @@
+{
+  "job_id": "20260801T102037_03_status_sharing",
+  "feature_slug": "status_sharing",
+  "spec_path": "/Users/shivamtaneja/projects/clickhouse/schema-kings-clickathon/specs/03_status_sharing/spec.md",
+  "events_path": "/Users/shivamtaneja/projects/clickhouse/schema-kings-clickathon/specs/03_status_sharing/events.ndjson",
+  "spec_bytes": 1176,
+  "events_bytes": 2375005,
+  "ingested_at": "2026-08-01T10:20:37.104Z"
+}
