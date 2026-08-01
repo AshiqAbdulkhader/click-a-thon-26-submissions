@@ -139,3 +139,6 @@ opencode.json
 
 # Pipeline Output Artifacts
 backend/artifacts/
+
+# ClickHouse-backed context replaces local context registry files
+backend/context/
