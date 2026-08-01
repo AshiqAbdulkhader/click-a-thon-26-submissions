@@ -20,7 +20,7 @@ CREATE TABLE IF NOT EXISTS bronze.feature_events
     feature_slug LowCardinality(String),
     source_path String,
     source_line UInt64,
-    event_name LowCardinality(Nullable(String)),
+    event_name LowCardinality(String),
     raw_json String,
     ingested_at DateTime DEFAULT now()
 )
@@ -33,8 +33,8 @@ CREATE TABLE IF NOT EXISTS gold.feature_metrics
     job_id String,
     feature_slug LowCardinality(String),
     metric_name LowCardinality(String),
-    segment_key LowCardinality(Nullable(String)),
-    segment_value Nullable(String),
+    segment_key LowCardinality(String),
+    segment_value String,
     metric_value Float64,
     numerator Nullable(Float64),
     denominator Nullable(Float64),
