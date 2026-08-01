@@ -107,7 +107,7 @@ ${JSON.stringify({
   await executeClickHouse(`INSERT INTO context.fact_registry FORMAT JSONEachRow
 ${[
   {
-    fact_id: `${input.job_id}:feature:${input.feature_slug}`,
+    fact_id: `feature:${input.feature_slug}:uses_table`,
     fact_type: "feature",
     subject: input.feature_slug,
     predicate: "uses_table",
@@ -121,7 +121,7 @@ ${[
     source_job_id: input.job_id,
   },
   {
-    fact_id: `${input.job_id}:entity:${input.feature_slug}`,
+    fact_id: `entity:${input.feature_slug}:primary_entity`,
     fact_type: "entity",
     subject: input.feature_slug,
     predicate: "primary_entity",
@@ -293,7 +293,7 @@ SELECT
   success_event,
   metric_hints_json,
   toString(updated_at)
-FROM context.feature_registry
+FROM context.feature_registry FINAL
 ORDER BY feature_slug
 FORMAT TabSeparated
 `)

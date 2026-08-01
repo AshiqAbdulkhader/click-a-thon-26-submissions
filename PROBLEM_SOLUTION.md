@@ -57,8 +57,9 @@ For each feature spec, the pipeline does:
 8. Normalizes raw NDJSON into ClickHouse `JSONEachRow`.
 9. Inserts rows into `silver.<feature>_events`.
 10. Validates row count, event names, event IDs, timestamp range, and success event.
-11. Updates context only after validation passes.
-12. Writes artifacts and a Langfuse trace ID.
+11. Updates ClickHouse context memory only after validation passes.
+12. Tracks run/stage state in ClickHouse `ops.*` tables.
+13. Writes artifacts and a Langfuse trace ID.
 
 Current artifacts:
 
@@ -159,24 +160,28 @@ If validation fails, the pipeline fails before context is updated.
 
 This matters because the context layer should not learn from bad loads.
 
-### 4. Context Agent v0
+### 4. Context Agent v1
 
-We do have a context step today, but it is still **Context Agent v0**, not the
-full final Context Agent.
+The context step is now ClickHouse-backed. Local files are source inputs, but
+ClickHouse is the source of truth for active context memory.
 
 Current responsibilities:
 
 - read `base_context.md`
 - read existing table DDL
 - read instrumentation notes
-- read generated context registry
-- update context after a validated Silver load
+- ingest those documents into `context.context_documents`
+- read generated feature/table/fact context from ClickHouse
+- update ClickHouse context after a validated Silver load
 - record known contradictions in the base context
 
-Current context registry:
+Current context tables:
 
 ```text
-backend/context/context_registry.json
+context.context_documents
+context.feature_registry
+context.fact_registry
+context.contradictions
 ```
 
 The context update records:
@@ -194,6 +199,9 @@ The important rule:
 ```text
 Context is updated only after the Silver Loader validation passes.
 ```
+
+Active context reads use `FINAL` on replacing tables so the harness sees the
+latest validated feature facts, while older attempts remain queryable for audit.
 
 ### 5. Analytics Harness
 
@@ -251,10 +259,14 @@ Recommended source of truth:
 ClickHouse:
   bronze/silver/gold data
   validated tables
-  future context tables
+  context.context_documents
+  context.feature_registry
+  context.fact_registry
+  context.contradictions
+  ops.pipeline_runs
+  ops.pipeline_stages
 
 Versioned files:
-  backend/context/context_registry.json
   generated context diffs
   run artifacts
 ```
@@ -330,8 +342,9 @@ bronze.feature_specs
 bronze.feature_events
 ```
 
-The current CLI writes Bronze artifacts locally. A later hardening pass can also
-insert raw spec/events into the Bronze ClickHouse tables.
+The current CLI writes Bronze artifacts locally; the next hardening pass should
+also insert raw specs/events into the Bronze ClickHouse tables so replay input is
+fully database-backed.
 
 ### Silver
 
@@ -362,6 +375,13 @@ summaries, confidence scores, and evidence JSON.
 ## Tracing
 
 Langfuse is integrated into the real pipeline.
+
+ClickHouse also tracks run/stage state independently of Langfuse:
+
+```text
+ops.pipeline_runs
+ops.pipeline_stages
+```
 
 Trace structure:
 

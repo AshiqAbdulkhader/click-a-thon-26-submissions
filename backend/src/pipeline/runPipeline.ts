@@ -4,6 +4,7 @@ import { startActiveObservation } from "@langfuse/tracing";
 import { loadContextBundle } from "./context.js";
 import { runInstrumentationAgent } from "./instrumentation.js";
 import { pipelineStages } from "./stages.js";
+import { recordPipelineRun, recordPipelineStage } from "./tracking.js";
 import { shutdownLangfuse, startLangfuse } from "../tracing/langfuse.js";
 
 type RunPipelineInput = {
@@ -16,6 +17,9 @@ export async function runPipeline(input: RunPipelineInput) {
   const repoRoot = path.resolve(process.cwd(), "..");
   const specFolder = path.resolve(process.cwd(), input.specFolder);
   const jobId = createJobId(specFolder);
+  const featureSlug = normalizeFeatureSlug(path.basename(specFolder));
+  const startedAt = new Date().toISOString();
+  let traceId = "";
   const artifactRoot = path.join(repoRoot, "backend", "artifacts", jobId);
   await mkdir(artifactRoot, { recursive: true });
 
@@ -27,6 +31,7 @@ export async function runPipeline(input: RunPipelineInput) {
 
   try {
     await startActiveObservation("schema-kings.pipeline", async (rootSpan) => {
+      traceId = rootSpan.traceId;
       rootSpan.update({
         input: {
           job_id: jobId,
@@ -37,6 +42,15 @@ export async function runPipeline(input: RunPipelineInput) {
           environment: process.env.NODE_ENV ?? "local",
           model: process.env.GROQ_MODEL ?? "openai/gpt-oss-20b",
         },
+      });
+
+      await recordPipelineRun({
+        jobId,
+        featureSlug,
+        specFolder,
+        status: "started",
+        traceId,
+        startedAt,
       });
 
       const context = await startActiveObservation(
@@ -56,6 +70,23 @@ export async function runPipeline(input: RunPipelineInput) {
           const loadedContext = await loadContextBundle(repoRoot);
           span.update({
             output: {
+              generated_features:
+                loadedContext.generatedContext.features.length,
+              contradictions:
+                loadedContext.generatedContext.contradictions.length,
+            },
+          });
+          await recordPipelineStage({
+            jobId,
+            stageId: "00_context_provider",
+            stageName: "Context Provider",
+            status: "completed",
+            stageInput: {
+              base_context: "base_context.md",
+              existing_ddl: "data/ddl.sql",
+              instrumentation_notes: "data/instrumentation_notes.md",
+            },
+            stageOutput: {
               generated_features:
                 loadedContext.generatedContext.features.length,
               contradictions:
@@ -123,6 +154,27 @@ export async function runPipeline(input: RunPipelineInput) {
         span.update({
           output: runSummary,
         });
+        await recordPipelineStage({
+          jobId,
+          stageId: "12_trace_summary",
+          stageName: "Trace Summary",
+          status: "completed",
+          stageInput: {
+            artifact_root: artifactRoot,
+          },
+          stageOutput: runSummary,
+        });
+      });
+
+      await recordPipelineRun({
+        jobId,
+        featureSlug: result.featureSlug,
+        specFolder,
+        status: "completed",
+        traceId,
+        startedAt,
+        completedAt: new Date().toISOString(),
+        summary: runSummary,
       });
 
       rootSpan.update({
@@ -143,9 +195,27 @@ export async function runPipeline(input: RunPipelineInput) {
       );
       console.log(`Langfuse trace ID: ${rootSpan.traceId}`);
     });
+  } catch (error) {
+    await recordPipelineRun({
+      jobId,
+      featureSlug,
+      specFolder,
+      status: "failed",
+      traceId,
+      startedAt,
+      completedAt: new Date().toISOString(),
+      summary: {
+        error: error instanceof Error ? error.message : String(error),
+      },
+    });
+    throw error;
   } finally {
     await shutdownLangfuse();
   }
+}
+
+function normalizeFeatureSlug(folderName: string) {
+  return folderName.replace(/^\d+_/, "").replace(/[^a-zA-Z0-9]+/g, "_");
 }
 
 function createJobId(specFolder: string) {

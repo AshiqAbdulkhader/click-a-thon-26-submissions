@@ -227,21 +227,27 @@ export async function runInstrumentationAgent(input: {
           eventProfile,
           context: input.context,
         })) ?? buildFallbackManifest(featureSlug, specMarkdown, eventProfile);
+      const repairedManifest = repairManifestWithEvidence({
+        manifest: parsedManifest,
+        featureSlug,
+        specMarkdown,
+        eventProfile,
+      });
 
       await writeStageJson(
         input.artifactRoot,
         "03_spec_parser",
         "feature_manifest.json",
-        parsedManifest,
+        repairedManifest,
       );
 
       span.update({
         output: {
-          feature_name: parsedManifest.feature_name,
-          workflow_type: parsedManifest.workflow_type,
-          primary_entity: parsedManifest.primary_entity,
-          success_event: parsedManifest.success_event,
-          metric_hints: parsedManifest.metric_hints,
+          feature_name: repairedManifest.feature_name,
+          workflow_type: repairedManifest.workflow_type,
+          primary_entity: repairedManifest.primary_entity,
+          success_event: repairedManifest.success_event,
+          metric_hints: repairedManifest.metric_hints,
           artifact: path.join(
             input.artifactRoot,
             "03_spec_parser",
@@ -260,15 +266,15 @@ export async function runInstrumentationAgent(input: {
           event_names: eventProfile.event_order,
         },
         stageOutput: {
-          feature_name: parsedManifest.feature_name,
-          workflow_type: parsedManifest.workflow_type,
-          primary_entity: parsedManifest.primary_entity,
-          success_event: parsedManifest.success_event,
-          metric_hints: parsedManifest.metric_hints,
+          feature_name: repairedManifest.feature_name,
+          workflow_type: repairedManifest.workflow_type,
+          primary_entity: repairedManifest.primary_entity,
+          success_event: repairedManifest.success_event,
+          metric_hints: repairedManifest.metric_hints,
         },
       });
 
-      return parsedManifest;
+      return repairedManifest;
     },
   );
 
@@ -389,6 +395,22 @@ export async function runInstrumentationAgent(input: {
         ),
       },
     });
+
+    await recordPipelineStage({
+      jobId: input.jobId,
+      stageId: "05_schema_critic",
+      stageName: "Schema Critic",
+      status: "completed",
+      stageInput: {
+        table: `silver.${schemaPlan.table_name}`,
+        column_count: schemaPlan.columns.length,
+      },
+      stageOutput: {
+        verdict: schemaReview.includes("Pass for v0")
+          ? "pass"
+          : "needs_attention",
+      },
+    });
   });
 
   const loadReport = await startActiveObservation(
@@ -465,10 +487,34 @@ ${jsonEachRow}
       });
 
       if (!validation.passed) {
+        await recordPipelineStage({
+          jobId: input.jobId,
+          stageId: "06_silver_loader",
+          stageName: "Silver Loader",
+          status: "failed",
+          stageInput: {
+            table: `silver.${schemaPlan.table_name}`,
+            expected_rows: eventProfile.row_count,
+          },
+          stageOutput: report,
+          error: validation.failures.join("; "),
+        });
         throw new Error(
           `Silver load validation failed for ${report.table}: ${validation.failures.join("; ")}`,
         );
       }
+
+      await recordPipelineStage({
+        jobId: input.jobId,
+        stageId: "06_silver_loader",
+        stageName: "Silver Loader",
+        status: "completed",
+        stageInput: {
+          table: `silver.${schemaPlan.table_name}`,
+          expected_rows: eventProfile.row_count,
+        },
+        stageOutput: report,
+      });
 
       return report;
     },
@@ -524,6 +570,22 @@ ${jsonEachRow}
             "updated_context.json",
           ),
         ],
+      },
+    });
+
+    await recordPipelineStage({
+      jobId: input.jobId,
+      stageId: "07_context_agent",
+      stageName: "Context Agent",
+      status: "completed",
+      stageInput: {
+        feature_slug: featureSlug,
+        table_name: schemaPlan.table_name,
+        validation_passed: loadReport.validation.passed,
+      },
+      stageOutput: {
+        generated_features: updatedContext.features.length,
+        contradictions: updatedContext.contradictions.length,
       },
     });
   });
@@ -720,6 +782,80 @@ function buildFallbackManifest(
   };
 }
 
+function repairManifestWithEvidence(input: {
+  manifest: FeatureManifest;
+  featureSlug: string;
+  specMarkdown: string;
+  eventProfile: EventProfile;
+}): FeatureManifest {
+  const eventOrder = extractSpecEventOrder(
+    input.specMarkdown,
+    input.eventProfile.event_order,
+  );
+  const eventText = eventOrder.join(" ");
+  const hasField = (fieldPath: string) =>
+    input.eventProfile.fields.some((field) => field.path === fieldPath);
+  const contextNotes = [...input.manifest.context_notes];
+
+  let primaryEntity = input.manifest.primary_entity;
+  let workflowType = input.manifest.workflow_type;
+  let metricHints = input.manifest.metric_hints;
+
+  if (
+    hasField("share_id") &&
+    (eventText.includes("recipient") ||
+      eventText.includes("link_opened") ||
+      input.specMarkdown.toLowerCase().includes("share"))
+  ) {
+    primaryEntity = "share_id";
+    workflowType = "referral_loop";
+    metricHints = [
+      "share_rate_by_status_shared",
+      "channel_mix",
+      "new_user_open_rate_by_channel",
+      "recipient_cta_rate",
+    ];
+    contextNotes.push(
+      "Deterministic repair: share_id is present and recipient-side events are keyed by share_id.",
+    );
+  } else if (hasField("group_id")) {
+    primaryEntity = "group_id";
+    workflowType = "funnel";
+    contextNotes.push(
+      "Deterministic repair: group_id is present and is the feature-level entity.",
+    );
+  } else if (
+    eventText.includes("forex") ||
+    input.specMarkdown.toLowerCase().includes("aov")
+  ) {
+    primaryEntity = "application_id";
+    workflowType = "revenue_addon";
+    metricHints = ["attach_rate", "aov_uplift", "dropoff_by_step"];
+    contextNotes.push("Deterministic repair: forex feature is a revenue add-on.");
+  } else if (
+    eventText.includes("reminder") ||
+    eventText.includes("reconverted")
+  ) {
+    primaryEntity = "application_id";
+    workflowType = "recovery";
+    metricHints = ["reconversion_rate", "channel_recovery_rate", "timing_effect"];
+    contextNotes.push(
+      "Deterministic repair: reminder/reconverted events indicate recovery workflow.",
+    );
+  }
+
+  return {
+    ...input.manifest,
+    feature_slug: input.featureSlug,
+    primary_entity: primaryEntity,
+    workflow_type: workflowType,
+    event_order: eventOrder,
+    success_event: eventOrder.at(-1) ?? input.manifest.success_event,
+    metric_hints: metricHints,
+    context_notes: [...new Set(contextNotes)],
+  };
+}
+
 function buildSchemaPlan(
   manifest: FeatureManifest,
   eventProfile: EventProfile,
@@ -808,15 +944,27 @@ function buildSchemaPlan(
     reason: "Operational ingest timestamp.",
   });
 
+  const columnNames = new Set(columns.map((column) => column.name));
+  const nullableColumns = new Set(
+    columns
+      .filter((column) => column.type.startsWith("Nullable("))
+      .map((column) => column.name),
+  );
+  const primaryEntityColumn = resolvePrimaryEntityColumn(
+    manifest.primary_entity,
+    columnNames,
+  );
+
   const orderBy = [
     "event_name",
     "timestamp",
-    manifest.primary_entity === "application_id"
-      ? "application_id"
-      : toColumnName(manifest.primary_entity),
+    primaryEntityColumn,
     "user_id",
     "event_id",
-  ].filter((column, index, all) => all.indexOf(column) === index);
+  ].filter(
+    (column, index, all) =>
+      all.indexOf(column) === index && !nullableColumns.has(column),
+  );
 
   return {
     database: "silver",
@@ -827,6 +975,23 @@ function buildSchemaPlan(
     ttl: "timestamp + INTERVAL 18 MONTH",
     columns,
   };
+}
+
+function resolvePrimaryEntityColumn(
+  primaryEntity: string,
+  columnNames: Set<string>,
+) {
+  const normalized = toColumnName(primaryEntity);
+  if (columnNames.has(normalized)) {
+    return normalized;
+  }
+
+  const withId = `${normalized}_id`;
+  if (columnNames.has(withId)) {
+    return withId;
+  }
+
+  return columnNames.has("application_id") ? "application_id" : "user_id";
 }
 
 function renderCreateTableSql(plan: SchemaPlan): string {

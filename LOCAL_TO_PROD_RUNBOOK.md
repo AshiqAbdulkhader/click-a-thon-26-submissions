@@ -97,6 +97,40 @@ ORDER BY database, name
 "
 ```
 
+Bootstrap base context into ClickHouse memory:
+
+```bash
+cd /Users/shivamtaneja/projects/clickhouse/schema-kings-clickathon/backend
+pnpm cli context:bootstrap
+```
+
+Verify ClickHouse-backed context memory:
+
+```bash
+cd /Users/shivamtaneja/projects/clickhouse/schema-kings-clickathon
+
+docker compose exec -T clickhouse clickhouse-client \
+  --user schema_kings \
+  --password schema_kings \
+  --query "
+SELECT database, name
+FROM system.tables
+WHERE database IN ('context', 'ops')
+ORDER BY database, name
+"
+```
+
+Expected context/ops tables:
+
+```text
+context.context_documents
+context.contradictions
+context.fact_registry
+context.feature_registry
+ops.pipeline_runs
+ops.pipeline_stages
+```
+
 ## Start Langfuse Locally
 
 Start Langfuse plus its separate observability ClickHouse:
@@ -188,6 +222,48 @@ Open the loader report:
 backend/artifacts/<job_id>/06_silver_loader/load_report.json
 ```
 
+Check active context for generated features:
+
+```bash
+docker compose exec -T clickhouse clickhouse-client \
+  --user schema_kings \
+  --password schema_kings \
+  --query "
+SELECT feature_slug, job_id, table_name, primary_entity, workflow_type, success_event
+FROM context.feature_registry FINAL
+ORDER BY updated_at DESC
+LIMIT 10
+"
+```
+
+Check pipeline run tracking:
+
+```bash
+docker compose exec -T clickhouse clickhouse-client \
+  --user schema_kings \
+  --password schema_kings \
+  --query "
+SELECT job_id, status, trace_id
+FROM ops.pipeline_runs FINAL
+ORDER BY updated_at DESC
+LIMIT 10
+"
+```
+
+Check stage tracking for one job:
+
+```bash
+docker compose exec -T clickhouse clickhouse-client \
+  --user schema_kings \
+  --password schema_kings \
+  --query "
+SELECT stage_id, status
+FROM ops.pipeline_stages
+WHERE job_id = '<job_id>'
+ORDER BY recorded_at
+"
+```
+
 ## Current Pipeline Behavior
 
 ```text
@@ -200,8 +276,9 @@ backend/artifacts/<job_id>/06_silver_loader/load_report.json
 7. Normalizes events.ndjson into JSONEachRow.
 8. Inserts rows into silver.<feature>_events.
 9. Validates row count, event names, event IDs, timestamp range, and success event.
-10. Updates context only after validation passes.
-11. Writes a Langfuse trace ID into run_summary.json.
+10. Updates ClickHouse context memory only after validation passes.
+11. Tracks run/stage state in ops.pipeline_runs and ops.pipeline_stages.
+12. Writes a Langfuse trace ID into run_summary.json.
 ```
 
 ## Production / Demo Switch
