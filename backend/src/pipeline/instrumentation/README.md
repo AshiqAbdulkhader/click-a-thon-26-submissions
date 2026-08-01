@@ -54,6 +54,18 @@ spec folder
   -> 07 Context Updater
 ```
 
+## Mental Model
+
+Think of this folder as a single Instrumentation Agent with deterministic tools around it.
+
+The agent has three responsibilities:
+
+- Observe: preserve and profile the feature spec and raw events.
+- Decide: use context, spec intent, event evidence, LLM schema design, LLM critique, and deterministic guardrails to choose a ClickHouse schema.
+- Act: create ClickHouse objects, load rows, validate the result, and write only validated memory back to context.
+
+The LLM is allowed to propose and critique schema strategy. Deterministic code owns evidence extraction, ClickHouse execution, validation, and memory writes.
+
 The important agent loop is:
 
 ```text
@@ -70,6 +82,16 @@ observe raw spec/events + retrieve context
 ```
 
 Each stage has a small file and a single main function. Shared types live in `types.ts`. Shared event utilities live in `eventUtils.ts`. Tracking definitions live in `trackingEvents.ts`.
+
+## Trust Boundaries
+
+- `spec.md` is product intent, but it can be incomplete.
+- `events.ndjson` is the strongest evidence for fields, nullability, event names, and source paths.
+- context memory is useful prior knowledge, not ground truth.
+- LLM outputs are drafts, never directly trusted.
+- deterministic guardrails and Silver validation decide whether a schema can execute and whether memory can be updated.
+
+This matters because the problem statement says the starting context may be messy. The pipeline is designed to use context without blindly believing it.
 
 ## Tracking Contract
 
@@ -98,6 +120,12 @@ File: `bronzeIngest.ts`
 Main function: `runBronzeIngest`
 
 Tracking event: `instrumentationTrackingEvents.bronzeIngest`
+
+Nature:
+
+- Deterministic.
+- Not agentic.
+- This is the evidence-preservation layer.
 
 Input:
 
@@ -136,6 +164,12 @@ Why this matters:
 
 Bronze is the audit layer. If Silver looks wrong later, the raw payload is still queryable by `job_id`, `feature_slug`, and `source_line`.
 
+Failure behavior:
+
+- Invalid NDJSON fails the run early.
+- Row-count mismatches fail the stage.
+- Context memory is not touched.
+
 ### 02 Event Profiler
 
 File: `eventProfiler.ts`
@@ -143,6 +177,12 @@ File: `eventProfiler.ts`
 Main function: `runEventProfiler`
 
 Tracking event: `instrumentationTrackingEvents.eventProfiler`
+
+Nature:
+
+- Deterministic.
+- Not agentic.
+- This is the observation step the schema agent relies on.
 
 Input:
 
@@ -174,6 +214,12 @@ Why this matters:
 
 The schema generator should not guess blindly. It uses the event profile to decide column names, nullability, and rough ClickHouse types.
 
+Important detail:
+
+- A field that is missing from some events should become nullable.
+- Nested paths such as `payment.amount` are preserved as source paths and later flattened into analytical column names.
+- This profile is what prevents the LLM from inventing columns that do not exist in the event evidence.
+
 ### 03 Spec Parser
 
 File: `specParser.ts`
@@ -185,6 +231,12 @@ Tracking event: `instrumentationTrackingEvents.specParser`
 LLM generation event:
 
 - `groq.feature_manifest`
+
+Nature:
+
+- Agentic when Groq is available.
+- Deterministic fallback/repair when Groq fails or produces weak output.
+- This is semantic parsing, not schema execution.
 
 Input:
 
@@ -227,6 +279,12 @@ Why this matters:
 
 This is the semantic observation step. It converts raw product language into structured feature semantics that drive the schema design loop and later analytics.
 
+How context is used:
+
+- Context helps infer workflow type, primary entity, success event, and metric hints.
+- Event evidence still wins when context and raw data disagree.
+- The parser should produce a manifest that downstream schema design can reason over.
+
 ### 04 Schema Generator
 
 File: `schemaGenerator.ts`
@@ -234,6 +292,12 @@ File: `schemaGenerator.ts`
 Main function: `runSchemaGenerator`
 
 Tracking event: `instrumentationTrackingEvents.schemaGenerator`
+
+Nature:
+
+- This is the most agentic part of instrumentation.
+- It uses an LLM designer, an LLM critic, optional LLM revision, and deterministic guardrails.
+- It generates plans and artifacts only; it does not execute SQL.
 
 Implementation lives under `schema-generator/`:
 
@@ -271,6 +335,35 @@ What happens:
 - Creates the final `CREATE TABLE` SQL.
 - Creates a mapping plan from raw JSON fields to Silver columns.
 
+Internal loop:
+
+```text
+context + manifest + event profile
+  -> LLM schema designer
+  -> LLM schema critic
+  -> optional LLM schema revision
+  -> deterministic guardrail review
+  -> deterministic repair if needed
+  -> SQL + mapping + MV artifacts
+```
+
+Guardrails currently protect against:
+
+- missing required pipeline columns
+- invented raw source paths
+- unmapped raw fields
+- nullable columns in `ORDER BY`
+- missing `timestamp` / `event_id` in `ORDER BY`
+- unsafe short TTLs
+- invalid ClickHouse column types
+- sparse raw fields being treated as non-nullable
+
+Execution feedback:
+
+- If Silver load or validation fails later, the orchestrator feeds that failure back into this stage.
+- The stage can regenerate a corrected schema once using that feedback.
+- Retry history is written to `04_schema_generator/repair_loop.json`.
+
 ClickHouse writes:
 
 - None in this stage. SQL is generated but not executed here.
@@ -293,6 +386,12 @@ Why this matters:
 
 This is the core Instrumentation Agent reasoning loop. LLM help is allowed for schema strategy, but deterministic guardrails own correctness before anything touches ClickHouse.
 
+Honest limitation:
+
+- The generated schema is evidence-aware and guarded, but not proven globally optimal.
+- Materialized view planning is useful but still generic.
+- The LLM can still make questionable semantic choices; guardrails catch safety issues, not every product judgment.
+
 ### 05 Schema Critic
 
 File: `schemaCritic.ts`
@@ -300,6 +399,12 @@ File: `schemaCritic.ts`
 Main function: `runSchemaCritic`
 
 Tracking event: `instrumentationTrackingEvents.schemaCritic`
+
+Nature:
+
+- Deterministic final blocking gate.
+- Not the same as the LLM critic inside the schema design loop.
+- This is the last safety check before SQL execution.
 
 Input:
 
@@ -334,6 +439,12 @@ Why this matters:
 
 This is the final quality gate before SQL execution. The schema design loop should repair issues before this point; if it does not, the critic stops the run so bad schemas do not become bad memory.
 
+Failure behavior:
+
+- If warnings remain, the orchestrator treats them as execution feedback.
+- The schema generator gets one repair attempt.
+- If the repaired schema still fails this critic, the run fails and context memory is not updated.
+
 ### 06 Silver Loader
 
 File: `silverLoader.ts`
@@ -341,6 +452,12 @@ File: `silverLoader.ts`
 Main function: `runSilverLoader`
 
 Tracking event: `instrumentationTrackingEvents.silverLoader`
+
+Nature:
+
+- Deterministic execution and validation.
+- Not agentic by itself.
+- Its failures can become feedback for the agentic schema loop.
 
 Input:
 
@@ -352,8 +469,8 @@ Input:
 
 What happens:
 
-- Executes `CREATE TABLE IF NOT EXISTS silver.<feature_slug>_events`.
 - Drops/recreates generated Silver and Gold objects before applying the current schema plan, so reruns do not silently reuse stale tables.
+- Executes `CREATE TABLE IF NOT EXISTS silver.<feature_slug>_events`.
 - Executes any generated Gold aggregation target tables and materialized views.
 - Normalizes each raw event into the generated schema.
 - Inserts rows with `FORMAT JSONEachRow`.
@@ -387,6 +504,19 @@ Why this matters:
 
 This is where Bronze becomes useful typed data. Context is updated only after this stage passes validation.
 
+Why generated tables are recreated:
+
+- During development, the agent may produce a better schema on a later run.
+- `CREATE TABLE IF NOT EXISTS` alone would silently keep the old table shape.
+- The loader drops/recreates generated Silver/Gold objects so ClickHouse state matches the current schema plan.
+
+Failure behavior:
+
+- The loader writes `load_report.json` when validation fails.
+- The orchestrator records the failure in `repair_loop.json`.
+- The schema generator gets one feedback-driven retry.
+- If the retry also fails, the CLI fails with the validation/load error.
+
 ### 07 Context Updater
 
 File: `contextUpdater.ts`
@@ -395,22 +525,39 @@ Main function: `runContextUpdater`
 
 Tracking event: `instrumentationTrackingEvents.contextUpdater`
 
+Nature:
+
+- Deterministic memory write.
+- Not an LLM memory agent yet.
+- This is the validation-gated write path into context.
+
 Input:
 
 - feature manifest
 - schema plan
+- event profile
 - Silver load report
 
 What happens:
 
 - Writes validated feature/table/entity/event context into ClickHouse context memory.
 - Writes feature facts into the fact registry.
+- Writes column memory, including ClickHouse types, source paths, semantic roles, sample values, and confidence.
+- Writes workflow memory, including ordered events, start event, success event, primary entity, and segment columns.
+- Writes metric memory from metric hints and primary conversion shape.
+- Writes join memory for reusable join keys such as `user_id` and `application_id`.
+- Writes schema quality memory, including engine, partitioning, ordering, TTL, materialized views, and validation status.
 - Produces a context diff artifact.
 
 ClickHouse writes:
 
 - `context.feature_registry`
 - `context.fact_registry`
+- `context.column_registry`
+- `context.workflow_registry`
+- `context.metric_registry`
+- `context.join_registry`
+- `context.schema_quality_registry`
 
 Artifacts:
 
@@ -424,6 +571,12 @@ Output:
 Why this matters:
 
 This is how spec 02 can know what spec 01 created. The context layer becomes the memory source for future instrumentation and analytics.
+
+Failure behavior:
+
+- This stage only runs after Silver validation passes.
+- Failed generated schemas are not written into memory.
+- That keeps later specs from learning bad table shapes or broken mappings.
 
 ## File Map
 
@@ -535,4 +688,6 @@ Current limitations:
 - Duplicate collapse relies on `ReplacingMergeTree` behavior and ClickHouse merges.
 - The manifest can use Groq, so deterministic repair exists to correct common feature semantics.
 - The current materialized view is a reusable instrumentation aggregate, not the full PM-facing Gold analytics layer.
-- Context memory still stores feature-level facts; richer column-level memory belongs in the next Context Agent pass.
+- Context retrieval is still deterministic keyword/rule scoring, not vector semantic retrieval.
+- Memory writes are deterministic, not a separate LLM memory agent.
+- Schema optimization is guarded and evidence-aware, but not benchmark-driven yet.
