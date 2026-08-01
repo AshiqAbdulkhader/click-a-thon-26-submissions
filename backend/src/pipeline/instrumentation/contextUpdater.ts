@@ -140,6 +140,17 @@ ${manifest.context_notes.map((note) => `- ${note}`).join("\n")}
 - Known workflows: ${registry.workflows.length}
 - Known metrics: ${registry.metrics.length}
 - Known joins: ${registry.joins.length}
-- Known context contradictions: ${registry.contradictions.length}
+- Known context contradictions / gaps / known-issue links: ${registry.contradictions.length}
+
+## Open Contradictions & Gaps (sample)
+
+${
+  registry.contradictions.length === 0
+    ? "- none"
+    : registry.contradictions
+        .slice(0, 12)
+        .map((item) => `- \`${item.id}\`: ${item.summary}`)
+        .join("\n")
+}
 `;
 }

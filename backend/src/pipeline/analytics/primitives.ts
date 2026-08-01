@@ -1,5 +1,10 @@
 import { startActiveObservation } from "@langfuse/tracing";
 import { sqlString } from "../clickhouse.js";
+import {
+  BASE_FUNNEL_TABLES,
+  bareTableName,
+  qualifyFeatureTable,
+} from "../warehouseTables.js";
 import { writeStageJson } from "../instrumentation/artifacts.js";
 import { recordPipelineStage } from "../tracking.js";
 import { analyticsTrackingEvents } from "./trackingEvents.js";
@@ -15,6 +20,7 @@ type TableShape = {
   table: string;
   columns: Set<string>;
   workflow?: PmRelevantContext["workflows"][number];
+  isBaseTable: boolean;
 };
 
 export async function runAnalyticsPrimitives(input: {
@@ -66,7 +72,23 @@ function buildPrimitiveQueries(input: {
     input.plan.answer_type,
   ]);
 
-  for (const shape of shapes.slice(0, 3)) {
+  for (const shape of shapes.slice(0, 4)) {
+    if (shape.isBaseTable) {
+      // Base tables are one-event-per-table; different primitives.
+      queries.push(baseTableOverview(shape));
+      if (
+        requested.has("segment_comparison") ||
+        requested.has("root_cause") ||
+        requested.has("open_ended")
+      ) {
+        const segment = pickSegmentColumn(shape);
+        if (segment) {
+          queries.push(baseSegmentVolume(shape, segment));
+        }
+      }
+      continue;
+    }
+
     if (hasCoreEventColumns(shape)) {
       queries.push(eventOverview(shape));
     }
@@ -86,10 +108,14 @@ function buildPrimitiveQueries(input: {
     if (
       requested.has("funnel") ||
       requested.has("root_cause") ||
-      requested.has("open_ended")
+      requested.has("open_ended") ||
+      requested.has("metric_lookup")
     ) {
       if (hasCoreEventColumns(shape) && hasEntity(shape)) {
         queries.push(funnelBreakdown(shape));
+        if (shape.workflow?.start_event && shape.workflow?.success_event) {
+          queries.push(conversionRate(shape));
+        }
       }
     }
     if (
@@ -121,6 +147,28 @@ function buildPrimitiveQueries(input: {
     }
   }
 
+  // Cross-table base funnel primitive when baseline is relevant.
+  if (
+    requested.has("funnel") ||
+    requested.has("root_cause") ||
+    requested.has("open_ended") ||
+    requested.has("metric_lookup") ||
+    /baseline|uplift|conversion|funnel|overall/i.test(
+      input.intent.original_question,
+    )
+  ) {
+    queries.push(baseFunnelPrimitive());
+    queries.push(baseFunnelByDevicePrimitive());
+  }
+
+  // Feature ↔ baseline join when we have a silver feature table with user_id.
+  const featureShape = shapes.find(
+    (shape) => !shape.isBaseTable && shape.columns.has("user_id"),
+  );
+  if (featureShape && featureShape.workflow?.success_event) {
+    queries.push(featureVsBaselineUplift(featureShape));
+  }
+
   const seen = new Set<string>();
   return queries.filter((query) => {
     if (seen.has(query.id)) {
@@ -138,20 +186,76 @@ function resolveTableShapes(
   const tables = unique([
     ...plan.tables,
     ...context.features.map((feature) => feature.table_name),
-    ...context.workflows.map((workflow) => workflow.table_name),
-  ]).filter(Boolean);
+    ...context.workflows
+      .map((workflow) => workflow.table_name)
+      .filter((table) => !table.includes("|")),
+  ])
+    .filter(Boolean)
+    .map((table) => qualifyFeatureTable(table));
 
-  return tables.map((table) => ({
-    table,
-    columns: new Set(
+  // Always try to include base funnel when present in column registry.
+  for (const base of BASE_FUNNEL_TABLES) {
+    if (
+      context.columns.some(
+        (column) => bareTableName(column.table_name) === base,
+      )
+    ) {
+      tables.push(base);
+    }
+  }
+
+  return unique(tables).map((table) => {
+    const qualified = qualifyFeatureTable(table);
+    const bare = bareTableName(qualified);
+    const isBaseTable =
+      (BASE_FUNNEL_TABLES as readonly string[]).includes(bare) ||
+      [
+        "search_typed",
+        "landing_page_scrolled",
+        "auth_completed",
+        "pay_now_clicked",
+      ].includes(bare);
+
+    const columns = new Set(
       context.columns
-        .filter((column) => column.table_name === table)
+        .filter(
+          (column) =>
+            column.table_name === qualified ||
+            column.table_name === bare ||
+            bareTableName(column.table_name) === bare,
+        )
         .map((column) => column.column_name),
-    ),
-    workflow: context.workflows.find(
-      (workflow) => workflow.table_name === table,
-    ),
-  }));
+    );
+
+    // Base tables from DDL always have these even if registry was truncated.
+    if (isBaseTable) {
+      for (const required of [
+        "user_id",
+        "timestamp",
+        "device_type",
+        "os",
+        "geoip_country_code",
+        "destination",
+      ]) {
+        // don't invent — only add if registry already had some columns for table
+        if (columns.size > 0 && !columns.has(required)) {
+          // leave as-is; DDL bootstrap should have loaded them
+        }
+      }
+    }
+
+    return {
+      table: isBaseTable ? bare : qualified,
+      columns,
+      workflow: context.workflows.find(
+        (workflow) =>
+          workflow.table_name === qualified ||
+          workflow.table_name === bare ||
+          bareTableName(workflow.table_name) === bare,
+      ),
+      isBaseTable,
+    };
+  });
 }
 
 function hasCoreEventColumns(shape: TableShape) {
@@ -195,10 +299,12 @@ function pickColumn(shape: TableShape, fragments: string[]) {
 }
 
 function pickNumericPair(context: PmRelevantContext, shape: TableShape) {
+  const bare = bareTableName(shape.table);
   const numeric = context.columns
     .filter(
       (column) =>
-        column.table_name === shape.table &&
+        (column.table_name === shape.table ||
+          bareTableName(column.table_name) === bare) &&
         /(UInt|Int|Float|Decimal)/.test(column.clickhouse_type) &&
         !["job_id", "event_id"].includes(column.column_name),
     )
@@ -224,6 +330,138 @@ FROM ${shape.table}
 GROUP BY event_name
 ORDER BY rows DESC
 LIMIT 100`,
+  };
+}
+
+function baseTableOverview(shape: TableShape): GeneratedSqlQuery {
+  return {
+    id: idFor("primitive_base_overview", shape.table),
+    purpose: `Row count and time range for base table ${shape.table}.`,
+    sql_intent: "Count rows and time span on a base event table.",
+    expected_columns: ["rows", "unique_users", "first_seen", "last_seen"],
+    priority: "nice_to_have",
+    sql: `
+SELECT
+  count() AS rows,
+  uniqExact(user_id) AS unique_users,
+  min(timestamp) AS first_seen,
+  max(timestamp) AS last_seen
+FROM ${shape.table}`,
+  };
+}
+
+function baseSegmentVolume(
+  shape: TableShape,
+  segment: string,
+): GeneratedSqlQuery {
+  return {
+    id: idFor(`primitive_base_segment_${segment}`, shape.table),
+    purpose: `Base table ${shape.table} volume by ${segment}.`,
+    sql_intent: `Count unique users by ${segment}.`,
+    expected_columns: [segment, "users", "rows"],
+    priority: "nice_to_have",
+    sql: `
+SELECT
+  ${segment},
+  uniqExact(user_id) AS users,
+  count() AS rows
+FROM ${shape.table}
+GROUP BY ${segment}
+ORDER BY users DESC
+LIMIT 100`,
+  };
+}
+
+function baseFunnelPrimitive(): GeneratedSqlQuery {
+  return {
+    id: "primitive_base_funnel",
+    purpose:
+      "Base conversion funnel: unique users at each of the four core stages.",
+    sql_intent:
+      "Count distinct users on destination_card_clicked → application_started → document_uploaded → purchase_completed.",
+    expected_columns: ["stage", "users"],
+    priority: "required",
+    sql: `
+SELECT 'destination_card_clicked' AS stage, uniqExact(user_id) AS users FROM destination_card_clicked
+UNION ALL
+SELECT 'application_started' AS stage, uniqExact(user_id) AS users FROM application_started
+UNION ALL
+SELECT 'document_uploaded' AS stage, uniqExact(user_id) AS users FROM document_uploaded
+UNION ALL
+SELECT 'purchase_completed' AS stage, uniqExact(user_id) AS users FROM purchase_completed`,
+  };
+}
+
+function baseFunnelByDevicePrimitive(): GeneratedSqlQuery {
+  return {
+    id: "primitive_base_funnel_by_device",
+    purpose:
+      "Base funnel conversion by device_type (application_started → purchase_completed).",
+    sql_intent:
+      "Compare distinct users who started applications vs completed purchase by device_type.",
+    expected_columns: [
+      "device_type",
+      "started_users",
+      "purchased_users",
+      "conversion_rate",
+    ],
+    priority: "required",
+    sql: `
+SELECT
+  a.device_type AS device_type,
+  uniqExact(a.user_id) AS started_users,
+  uniqExactIf(a.user_id, p.user_id IS NOT NULL) AS purchased_users,
+  if(
+    uniqExact(a.user_id) = 0,
+    0,
+    uniqExactIf(a.user_id, p.user_id IS NOT NULL) / uniqExact(a.user_id)
+  ) AS conversion_rate
+FROM application_started AS a
+LEFT JOIN (
+  SELECT user_id, application_id
+  FROM purchase_completed
+) AS p ON a.user_id = p.user_id AND (
+  a.application_id IS NULL OR p.application_id = a.application_id
+)
+GROUP BY device_type
+ORDER BY started_users DESC
+LIMIT 50`,
+  };
+}
+
+function featureVsBaselineUplift(shape: TableShape): GeneratedSqlQuery {
+  const entity = pickEntityColumn(shape) ?? "user_id";
+  const success = shape.workflow?.success_event;
+  return {
+    id: idFor("primitive_feature_vs_baseline", shape.table),
+    purpose:
+      "Compare feature success users against base purchase_completed overlap (cross-table).",
+    sql_intent:
+      "Join feature success entities to purchase_completed on user_id for uplift context.",
+    expected_columns: [
+      "feature_success_users",
+      "also_purchased_users",
+      "purchase_overlap_rate",
+    ],
+    priority: "nice_to_have",
+    sql: `
+SELECT
+  uniqExact(f.user_id) AS feature_success_users,
+  uniqExactIf(f.user_id, p.user_id IS NOT NULL) AS also_purchased_users,
+  if(
+    uniqExact(f.user_id) = 0,
+    0,
+    uniqExactIf(f.user_id, p.user_id IS NOT NULL) / uniqExact(f.user_id)
+  ) AS purchase_overlap_rate
+FROM (
+  SELECT user_id, ${entity}
+  FROM ${shape.table}
+  ${success ? `WHERE event_name = ${sqlString(success)}` : ""}
+) AS f
+LEFT JOIN (
+  SELECT DISTINCT user_id
+  FROM purchase_completed
+) AS p ON f.user_id = p.user_id`,
   };
 }
 
@@ -328,6 +566,30 @@ FROM ${shape.table}
 GROUP BY event_name
 ORDER BY entities DESC
 LIMIT 100`,
+  };
+}
+
+function conversionRate(shape: TableShape): GeneratedSqlQuery {
+  const entity = pickEntityColumn(shape) ?? "user_id";
+  const start = shape.workflow?.start_event;
+  const success = shape.workflow?.success_event;
+  return {
+    id: idFor("primitive_conversion", shape.table),
+    purpose: "Primary feature conversion: start event → success event.",
+    sql_intent: "Compute uniq entities at start vs success.",
+    expected_columns: ["started", "succeeded", "conversion_rate"],
+    priority: "required",
+    sql: `
+SELECT
+  uniqExactIf(${entity}, event_name = ${sqlString(start ?? "")}) AS started,
+  uniqExactIf(${entity}, event_name = ${sqlString(success ?? "")}) AS succeeded,
+  if(
+    uniqExactIf(${entity}, event_name = ${sqlString(start ?? "")}) = 0,
+    0,
+    uniqExactIf(${entity}, event_name = ${sqlString(success ?? "")})
+      / uniqExactIf(${entity}, event_name = ${sqlString(start ?? "")})
+  ) AS conversion_rate
+FROM ${shape.table}`,
   };
 }
 

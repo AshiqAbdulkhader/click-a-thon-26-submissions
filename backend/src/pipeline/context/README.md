@@ -105,12 +105,26 @@ Deterministic:
 
 This is a hybrid design on purpose. The LLM reasons over memory, but deterministic code decides what becomes trusted memory.
 
+## Gap & Known-Issue Detection
+
+After every validated Silver load, `detectAndWriteContextGaps` (deterministic) compares the new schema and feature semantics to base expectations and seeds open rows into `context.contradictions`:
+
+- missing `user_id` / `application_id` (blocks base-funnel joins)
+- missing all common segment dimensions
+- ETA field naming mismatches (`visa_issuance_eta_days` vs `eta_shown`)
+- metric hints that imply latency/device cuts without matching columns
+- **known-issue links** from `base_context.md` (K1 iOS OTP, K2/K3 passport, K5 recovery, K6 coupons, …) when the feature touches those areas
+
+Bootstrap also writes structured **known_issue** facts into `context.fact_registry` so analytics can retrieve them.
+
+Feature registry table names are stored as `silver.<feature>_events`. Join registry stores **explicit** edges to each base funnel/support table (not only wildcards).
+
 ## Current Limitations
 
 - Retrieval is keyword/rule based, not semantic or vector based.
 - Memory writes are deterministic, not handled by a separate memory agent.
 - There is no confidence decay over time.
-- There is no deep conflict-resolution flow when new validated memory contradicts older memory.
+- Conflict resolution is detect-and-surface only — it does not auto-merge competing definitions.
 - Context reads are broad registry reads with limits, not per-query indexed retrieval.
 - Some metric SQL sketches are useful starting points, not final analytics-grade SQL.
 

@@ -120,7 +120,11 @@ export function buildSchemaPlan(
     order_by: orderBy,
     ttl: "timestamp + INTERVAL 18 MONTH",
     columns,
-    materialized_views: buildMaterializedViewPlans(tableName, columns),
+    materialized_views: buildMaterializedViewPlans(tableName, columns, {
+      startEvent: manifest.event_order[0] ?? null,
+      successEvent: manifest.success_event,
+      entityColumn: primaryEntityColumn,
+    }),
   };
 }
 function resolvePrimaryEntityColumn(

@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
 import path from "node:path";
+import {
+  BASE_FUNNEL_TABLES,
+  BASE_SUPPORTING_TABLES,
+  qualifyFeatureTable,
+} from "../warehouseTables.js";
+import { buildKnownIssueFacts, detectAndWriteContextGaps } from "./detect.js";
 import { insertJsonRows } from "./sql.js";
 import { emptyRegistry, UpdateGeneratedContextInput } from "./types.js";
 import { ensureContextTables } from "./tables.js";
@@ -10,11 +16,13 @@ export async function updateGeneratedContext(
   input: UpdateGeneratedContextInput,
 ) {
   await ensureContextTables();
+  const fullTableName = qualifyFeatureTable(input.table_name);
+
   await insertJsonRows("context.feature_registry", [
     {
       feature_slug: input.feature_slug,
       job_id: input.job_id,
-      table_name: input.table_name,
+      table_name: fullTableName,
       primary_entity: input.primary_entity,
       workflow_type: input.workflow_type,
       event_names_json: JSON.stringify(input.event_names),
@@ -30,7 +38,7 @@ export async function updateGeneratedContext(
       fact_type: "feature",
       subject: input.feature_slug,
       predicate: "uses_table",
-      object: input.table_name,
+      object: fullTableName,
       confidence: 1,
       evidence_json: JSON.stringify([
         "feature_manifest.json",
@@ -55,9 +63,19 @@ export async function updateGeneratedContext(
     },
   ]);
 
-  await writeSchemaMemory(input);
+  await writeSchemaMemory({
+    ...input,
+    table_name: bareOrAsIs(input.table_name),
+  });
+  await detectAndWriteContextGaps(input);
 
   return readGeneratedContext();
+}
+
+function bareOrAsIs(tableName: string) {
+  return tableName.includes(".")
+    ? tableName.split(".").slice(1).join(".")
+    : tableName;
 }
 
 export async function ingestBaseContextDocuments(input: {
@@ -106,6 +124,11 @@ export async function ingestBaseContextDocuments(input: {
       ...contradiction,
       status: "open",
     })),
+  );
+
+  await insertJsonRows(
+    "context.fact_registry",
+    buildKnownIssueFacts(input.jobId),
   );
 
   await writeBaseSchemaMemory({
@@ -475,36 +498,79 @@ function buildJoinMemory(input: {
   jobId: string;
 }) {
   const joins = [];
+  const leftTable = qualifyFeatureTable(input.tableName);
+  const isBase = !leftTable.startsWith("silver.");
+
+  // Explicit edges to every base event table when join keys exist.
+  // This is what lets analytics reason about feature uplift vs baseline funnel.
   if (input.columns.includes("user_id")) {
+    for (const baseTable of [
+      ...BASE_FUNNEL_TABLES,
+      ...BASE_SUPPORTING_TABLES,
+    ]) {
+      if (bareOrAsIs(leftTable) === baseTable) {
+        continue;
+      }
+      joins.push({
+        join_id: `${leftTable}:user_id:${baseTable}`,
+        left_table: leftTable,
+        left_column: "user_id",
+        right_table: baseTable,
+        right_column: "user_id",
+        join_type: "entity",
+        grain: "user",
+        confidence: 0.95,
+        evidence:
+          "Base context join map: user_id is present on every Atlys event stream.",
+        source_job_id: input.jobId,
+      });
+    }
+  }
+
+  if (input.columns.includes("application_id")) {
+    const applicationTables = [
+      "application_started",
+      "document_uploaded",
+      "pay_now_clicked",
+      "purchase_completed",
+    ] as const;
+    for (const baseTable of applicationTables) {
+      if (bareOrAsIs(leftTable) === baseTable) {
+        continue;
+      }
+      joins.push({
+        join_id: `${leftTable}:application_id:${baseTable}`,
+        left_table: leftTable,
+        left_column: "application_id",
+        right_table: baseTable,
+        right_column: "application_id",
+        join_type: "entity",
+        grain: "application",
+        confidence: 0.95,
+        evidence:
+          "Base context join map: application_id links application_started and downstream funnel tables.",
+        source_job_id: input.jobId,
+      });
+    }
+  }
+
+  // Cross-feature silver joins stay wildcard only as a fallback note.
+  if (!isBase && input.columns.includes("user_id")) {
     joins.push({
-      join_id: `${input.tableName}:user_id:base_events`,
-      left_table: input.tableName,
+      join_id: `${leftTable}:user_id:silver_features`,
+      left_table: leftTable,
       left_column: "user_id",
-      right_table: "*",
+      right_table: "silver.*",
       right_column: "user_id",
       join_type: "entity",
       grain: "user",
-      confidence: 0.9,
-      evidence: "Atlys context says user_id joins all event streams.",
-      source_job_id: input.jobId,
-    });
-  }
-  if (input.columns.includes("application_id")) {
-    joins.push({
-      join_id: `${input.tableName}:application_id:application_funnel`,
-      left_table: input.tableName,
-      left_column: "application_id",
-      right_table:
-        "application_started|document_uploaded|pay_now_clicked|purchase_completed",
-      right_column: "application_id",
-      join_type: "entity",
-      grain: "application",
-      confidence: 0.9,
+      confidence: 0.7,
       evidence:
-        "Base context join map links application_id across application_started and downstream funnel tables.",
+        "Generated Silver feature tables share user_id when present; verify column existence before joining.",
       source_job_id: input.jobId,
     });
   }
+
   return joins;
 }
 

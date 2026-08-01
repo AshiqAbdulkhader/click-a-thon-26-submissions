@@ -6,7 +6,9 @@ import { GeneratedSqlQuery, SqlGuardrailResult } from "./types.js";
 import {
   getClickHouseColumns,
   getKnownClickHouseTables,
+  sqlReferencesKnownTable,
   stripSqlFormatting,
+  tableAliases,
 } from "./utils.js";
 
 const FORBIDDEN_SQL =
@@ -25,7 +27,12 @@ export async function runSqlGuardrail(input: {
         const repairedSql = repairSql(query.sql);
         const warnings = validateSql(repairedSql, knownTables);
         const referencedTables = Array.from(knownTables).filter((table) =>
-          repairedSql.includes(table),
+          tableAliases(table).some((alias) =>
+            new RegExp(
+              `(^|[^a-zA-Z0-9_])${escapeRegExp(alias)}([^a-zA-Z0-9_]|$)`,
+              "i",
+            ).test(repairedSql),
+          ),
         );
         const columns = await getClickHouseColumns(referencedTables);
         const missingColumnWarnings = findLikelyMissingColumns(
@@ -37,6 +44,7 @@ export async function runSqlGuardrail(input: {
           ...query,
           sql: repairedSql,
           guardrail: {
+            // Column warnings are soft — block only on hard SQL safety failures.
             passed: warnings.length === 0,
             repaired_sql: repairedSql,
             warnings: [...warnings, ...missingColumnWarnings],
@@ -88,14 +96,16 @@ function validateSql(sql: string, knownTables: Set<string>) {
       "SQL contains a forbidden mutating or administrative keyword.",
     );
   }
-  const hasKnownTable = Array.from(knownTables).some((table) =>
-    normalized.includes(table),
-  );
-  if (!hasKnownTable && /\bfrom\s+system\./i.test(normalized)) {
+  if (/\bfrom\s+system\./i.test(normalized)) {
     return warnings;
   }
-  if (!hasKnownTable && /\bfrom\b/i.test(normalized)) {
-    warnings.push("SQL does not reference a known silver/gold/context table.");
+  if (
+    /\bfrom\b/i.test(normalized) &&
+    !sqlReferencesKnownTable(normalized, knownTables)
+  ) {
+    warnings.push(
+      "SQL does not reference a known base funnel, silver, gold, or context table.",
+    );
   }
   return warnings;
 }
@@ -106,59 +116,30 @@ function findLikelyMissingColumns(
   referencedTables: string[],
 ) {
   if (referencedTables.length === 0 || columns.length === 0) {
-    return [];
+    return [] as string[];
   }
-  const knownColumns = new Set(columns.map((column) => column.column_name));
-  const likelyIdentifiers = Array.from(
-    sql.matchAll(/\b([a-zA-Z_][a-zA-Z0-9_]*)\b/g),
-  )
-    .map((match) => match[1])
-    .filter(
-      (word) =>
-        ![
-          "select",
-          "from",
-          "where",
-          "group",
-          "by",
-          "order",
-          "limit",
-          "as",
-          "and",
-          "or",
-          "with",
-          "count",
-          "uniq",
-          "uniqExact",
-          "sum",
-          "avg",
-          "min",
-          "max",
-          "toDate",
-          "toStartOfDay",
-          "desc",
-          "asc",
-          "case",
-          "when",
-          "then",
-          "else",
-          "end",
-          "if",
-          "null",
-          "silver",
-          "gold",
-          "context",
-          "system",
-          "tables",
-        ].includes(word),
-    );
-  const missing = likelyIdentifiers.filter(
-    (word) =>
-      !knownColumns.has(word) &&
-      !referencedTables.some((table) => table.endsWith(`.${word}`)) &&
-      !/^\d+$/.test(word),
+  const knownColumns = new Set(
+    columns.map((column) => column.column_name.toLowerCase()),
   );
-  return Array.from(new Set(missing))
-    .slice(0, 8)
-    .map((column) => `Identifier may not be a known column: ${column}`);
+  // Cheap heuristic: flag bare identifiers after AS? too noisy. Only check
+  // common analytics columns that often get hallucinated.
+  const candidates = [
+    "express_flag",
+    "session_id",
+    "time_to_complete",
+    "visa_issuance_eta_days",
+  ];
+  return candidates
+    .filter((column) => {
+      const pattern = new RegExp(`\\b${column}\\b`, "i");
+      return pattern.test(sql) && !knownColumns.has(column.toLowerCase());
+    })
+    .map(
+      (column) =>
+        `Column '${column}' was not found on referenced tables; verify schema before trusting this query.`,
+    );
+}
+
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }

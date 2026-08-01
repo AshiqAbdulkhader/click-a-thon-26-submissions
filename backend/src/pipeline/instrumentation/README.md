@@ -331,7 +331,7 @@ What happens:
 - Infers ClickHouse types.
 - Avoids nullable columns in `ORDER BY`.
 - Preserves raw payload as `raw_json`.
-- Defines a reusable Gold materialized view for daily event and unique-user counts, adding segment dimensions when present.
+- Defines reusable Gold materialized views: daily event/user counts (with segment dims), daily start→success conversion, segment success rates, and latency rollups when a latency-like column exists.
 - Creates the final `CREATE TABLE` SQL.
 - Creates a mapping plan from raw JSON fields to Silver columns.
 

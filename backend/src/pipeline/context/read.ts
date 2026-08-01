@@ -1,4 +1,5 @@
 import { queryClickHouseText } from "../clickhouse.js";
+import { qualifyFeatureTable } from "../warehouseTables.js";
 import { emptyRegistry, GeneratedContextRegistry } from "./types.js";
 import { ensureContextTables } from "./tables.js";
 import { parseJsonArray } from "./utils.js";
@@ -129,7 +130,7 @@ FORMAT TabSeparated
           ] = line.split("\t");
           return {
             feature_slug,
-            table_name,
+            table_name: qualifyFeatureTable(table_name),
             primary_entity,
             event_names: parseJsonArray(event_names_json),
             success_event: success_event || null,
@@ -155,7 +156,7 @@ FORMAT TabSeparated
             is_nullable,
           ] = line.split("\t");
           return {
-            table_name,
+            table_name: normalizeRegistryTableName(table_name),
             column_name,
             clickhouse_type,
             source_path: source_path || null,
@@ -178,7 +179,7 @@ FORMAT TabSeparated
           ] = line.split("\t");
           return {
             feature_slug,
-            table_name,
+            table_name: normalizeRegistryTableName(table_name),
             workflow_type,
             start_event: start_event || null,
             success_event: success_event || null,
@@ -217,9 +218,9 @@ FORMAT TabSeparated
             confidence,
           ] = line.split("\t");
           return {
-            left_table,
+            left_table: normalizeRegistryTableName(left_table),
             left_column,
-            right_table,
+            right_table: normalizeRegistryTableName(right_table),
             right_column,
             grain,
             confidence: Number(confidence),
@@ -237,7 +238,7 @@ FORMAT TabSeparated
             validation_passed,
           ] = line.split("\t");
           return {
-            table_name,
+            table_name: normalizeRegistryTableName(table_name),
             order_by: parseJsonArray(order_by_json),
             partition_by,
             ttl,
@@ -247,4 +248,12 @@ FORMAT TabSeparated
         })
       : [],
   };
+}
+
+/** Qualify feature tables; leave multi-table workflow markers and base tables alone. */
+function normalizeRegistryTableName(tableName: string) {
+  if (!tableName || tableName.includes("|") || tableName.includes("*")) {
+    return tableName;
+  }
+  return qualifyFeatureTable(tableName);
 }

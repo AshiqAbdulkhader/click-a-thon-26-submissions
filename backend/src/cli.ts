@@ -72,6 +72,22 @@ async function main() {
         console.log(`- ${finding}`);
       }
     }
+    if (answer.evidence.length > 0) {
+      console.log("");
+      console.log("Evidence (claim → query → confidence):");
+      for (const claim of answer.evidence) {
+        console.log(
+          `- [${claim.confidence}] ${claim.claim} (query: ${claim.query_id})`,
+        );
+      }
+    }
+    if (answer.recommended_actions.length > 0) {
+      console.log("");
+      console.log("Recommended actions:");
+      for (const action of answer.recommended_actions) {
+        console.log(`- ${action}`);
+      }
+    }
     if (answer.caveats.length > 0) {
       console.log("");
       console.log("Caveats:");

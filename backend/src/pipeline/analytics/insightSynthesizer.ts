@@ -56,7 +56,9 @@ Rules:
 - Be useful to a product manager.
 - Say when evidence is weak or missing.
 - Do not claim causality unless the evidence directly supports it.
-- Mention query ids for claims.`,
+- Mention query ids for claims.
+- Attach confidence high|medium|low on every evidence claim.
+- If context contradictions mention known issues (e.g. K1 iOS WebKit OTP), link findings to them only when segment evidence supports it.`,
         },
       ],
     });
@@ -131,6 +133,15 @@ export function renderDraftMarkdown(draft: InsightDraft) {
     lines.push("## Key findings", "");
     for (const finding of draft.key_findings) {
       lines.push(`- ${finding}`);
+    }
+    lines.push("");
+  }
+  if (draft.evidence.length > 0) {
+    lines.push("## Evidence (claim → query → confidence)", "");
+    for (const claim of draft.evidence) {
+      lines.push(
+        `- **[${claim.confidence}]** ${claim.claim} _(query: \`${claim.query_id}\`)_`,
+      );
     }
     lines.push("");
   }

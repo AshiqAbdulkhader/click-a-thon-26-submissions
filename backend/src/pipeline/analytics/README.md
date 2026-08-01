@@ -166,3 +166,33 @@ The existing context layer already stores generated feature, workflow, metric, c
 - Generated SQL is a draft until guardrails and ClickHouse execution pass.
 - Empty or weak results trigger repair once.
 - The final answer is evidence-grounded; unsupported claims are downgraded or removed.
+
+## Warehouse Tables Analytics Can Query
+
+Analytics is not limited to `silver` / `gold` / `context`. The guardrail allowlist also includes the **8 base Atlys event tables** in the app database (`schema_kings` by default):
+
+- Funnel: `destination_card_clicked`, `application_started`, `document_uploaded`, `purchase_completed`
+- Supporting: `search_typed`, `landing_page_scrolled`, `auth_completed`, `pay_now_clicked`
+
+Generated feature tables must be referenced as `silver.<feature>_events`.
+
+SQL generation is grounded with:
+
+1. Exact table/column catalog from PM context retrieval
+2. Live `system.tables` allowlist (base + silver + gold + context)
+3. Deterministic rewrite of common invented names (`express_checkout_logs` → `silver.express_checkout_events`)
+4. Deterministic primitives (feature funnel, segment success, base funnel, feature↔purchase overlap)
+
+If context memory has no matching feature, retrieval emits a loud WARNING and falls back to base funnel tables instead of inventing schema.
+
+## Cross-Table Reasoning
+
+Join memory now stores explicit edges from each Silver feature table to each base event table on `user_id` / `application_id`. The planner injects those joins for uplift/baseline questions. Primitives include:
+
+- base funnel stage volumes
+- base funnel conversion by `device_type` (for K1-style iOS checks)
+- feature success users ∩ `purchase_completed` overlap
+
+## Confidence Surface
+
+Final answers (CLI + `final_answer.md`) include an **Evidence (claim → query → confidence)** section. Confidence is not only a viz concern — judges can read it from artifacts without a UI.

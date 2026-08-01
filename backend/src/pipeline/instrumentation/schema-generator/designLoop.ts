@@ -30,7 +30,12 @@ export async function runSchemaDesignLoop(
   const draft = await requestSchemaDesignDraft(input, relevantContext);
 
   if (draft) {
-    schemaPlan = normalizeDesignDraft(draft, fallbackPlan, input.eventProfile);
+    schemaPlan = normalizeDesignDraft(
+      draft,
+      fallbackPlan,
+      input.eventProfile,
+      input.manifest,
+    );
     iterations.push({
       iteration: 1,
       actor: "schema_designer",
@@ -87,6 +92,7 @@ export async function runSchemaDesignLoop(
           revision,
           fallbackPlan,
           input.eventProfile,
+          input.manifest,
         );
         iterations.push({
           iteration: 2,

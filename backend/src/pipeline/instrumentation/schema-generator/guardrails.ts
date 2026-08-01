@@ -8,6 +8,7 @@ export function normalizeDesignDraft(
   draft: SchemaDesignDraft,
   fallbackPlan: SchemaPlan,
   eventProfile: EventProfile,
+  manifest?: FeatureManifest | null,
 ): SchemaPlan {
   const allowedSourcePaths = new Set(
     eventProfile.fields.map((field) => field.path),
@@ -95,10 +96,12 @@ export function normalizeDesignDraft(
       materialized_views: buildMaterializedViewPlans(
         fallbackPlan.table_name,
         mergedColumns,
+        mvOptionsFrom(manifest, mergedColumns),
       ),
     },
     null,
     null,
+    manifest,
   );
 }
 
@@ -250,6 +253,7 @@ export function repairSchemaPlan(
   plan: SchemaPlan,
   manifest: FeatureManifest | null,
   eventProfile: EventProfile | null,
+  manifestForMv?: FeatureManifest | null,
 ): SchemaPlan {
   const baseline =
     manifest && eventProfile ? buildSchemaPlan(manifest, eventProfile) : plan;
@@ -273,6 +277,7 @@ export function repairSchemaPlan(
     orderBy.includes("timestamp") && orderBy.includes("event_id")
       ? orderBy
       : baseline.order_by;
+  const mvManifest = manifest ?? manifestForMv ?? null;
 
   return {
     ...plan,
@@ -280,7 +285,43 @@ export function repairSchemaPlan(
     ttl: normalizeTtl(plan.ttl, baseline.ttl),
     order_by: repairedOrderBy,
     columns,
-    materialized_views: buildMaterializedViewPlans(plan.table_name, columns),
+    materialized_views: buildMaterializedViewPlans(
+      plan.table_name,
+      columns,
+      mvOptionsFrom(mvManifest, columns),
+    ),
+  };
+}
+
+function mvOptionsFrom(
+  manifest: FeatureManifest | null | undefined,
+  columns: SchemaPlan["columns"],
+) {
+  const columnNames = new Set(columns.map((column) => column.name));
+  const entityColumn = manifest
+    ? columnNames.has(
+        manifest.primary_entity.endsWith("_id")
+          ? manifest.primary_entity
+          : `${manifest.primary_entity}_id`,
+      )
+      ? manifest.primary_entity.endsWith("_id")
+        ? manifest.primary_entity
+        : `${manifest.primary_entity}_id`
+      : columnNames.has("application_id")
+        ? "application_id"
+        : columnNames.has("user_id")
+          ? "user_id"
+          : null
+    : columnNames.has("application_id")
+      ? "application_id"
+      : columnNames.has("user_id")
+        ? "user_id"
+        : null;
+
+  return {
+    startEvent: manifest?.event_order[0] ?? null,
+    successEvent: manifest?.success_event ?? null,
+    entityColumn,
   };
 }
 
