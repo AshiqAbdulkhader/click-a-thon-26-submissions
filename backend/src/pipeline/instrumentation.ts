@@ -831,14 +831,20 @@ function repairManifestWithEvidence(input: {
     primaryEntity = "application_id";
     workflowType = "revenue_addon";
     metricHints = ["attach_rate", "aov_uplift", "dropoff_by_step"];
-    contextNotes.push("Deterministic repair: forex feature is a revenue add-on.");
+    contextNotes.push(
+      "Deterministic repair: forex feature is a revenue add-on.",
+    );
   } else if (
     eventText.includes("reminder") ||
     eventText.includes("reconverted")
   ) {
     primaryEntity = "application_id";
     workflowType = "recovery";
-    metricHints = ["reconversion_rate", "channel_recovery_rate", "timing_effect"];
+    metricHints = [
+      "reconversion_rate",
+      "channel_recovery_rate",
+      "timing_effect",
+    ];
     contextNotes.push(
       "Deterministic repair: reminder/reconverted events indicate recovery workflow.",
     );
