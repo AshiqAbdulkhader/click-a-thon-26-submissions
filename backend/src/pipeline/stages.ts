@@ -1,17 +1,7 @@
-import { instrumentationStageConfig } from "./instrumentation/stageConfig.js";
-
-const instrumentationStages = [
-  instrumentationStageConfig.bronzeIngest,
-  instrumentationStageConfig.eventProfiler,
-  instrumentationStageConfig.specParser,
-  instrumentationStageConfig.schemaGenerator,
-  instrumentationStageConfig.schemaCritic,
-  instrumentationStageConfig.silverLoader,
-  instrumentationStageConfig.contextUpdater,
-];
+import { instrumentationPipelineStages } from "./instrumentation/trackingEvents.js";
 
 export const pipelineStages = [
-  ...instrumentationStages,
+  ...instrumentationPipelineStages,
   {
     id: "08_analytics_orchestrator",
     name: "Analytics Orchestrator",

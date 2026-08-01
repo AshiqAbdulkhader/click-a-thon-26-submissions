@@ -9,7 +9,7 @@ import {
 import { recordPipelineStage } from "../tracking.js";
 import { writeStageJson } from "./artifacts.js";
 import { parseNdjson } from "./eventUtils.js";
-import { instrumentationStageConfig } from "./stageConfig.js";
+import { instrumentationTrackingEvents } from "./trackingEvents.js";
 
 export async function runBronzeIngest(input: {
   jobId: string;
@@ -18,9 +18,9 @@ export async function runBronzeIngest(input: {
   eventsPath: string;
   artifactRoot: string;
 }) {
-  const stage = instrumentationStageConfig.bronzeIngest;
+  const stage = instrumentationTrackingEvents.bronzeIngest;
 
-  return startActiveObservation(stage.id, async (span) => {
+  return startActiveObservation(stage.observationName, async (span) => {
     span.update({
       input: {
         job_id: input.jobId,
@@ -30,7 +30,8 @@ export async function runBronzeIngest(input: {
       },
       metadata: {
         agent: stage.agent,
-        target_layer: "bronze",
+        source_layer: stage.sourceLayer,
+        target_layer: stage.targetLayer,
       },
     });
 
@@ -84,7 +85,7 @@ ${bronzeRows.map((row) => JSON.stringify(row)).join("\n")}
 
     await writeStageJson(
       input.artifactRoot,
-      stage.id,
+      stage.stageId,
       "bronze_report.json",
       report,
     );
@@ -98,7 +99,11 @@ ${bronzeRows.map((row) => JSON.stringify(row)).join("\n")}
       output: {
         ...report,
         validation,
-        artifact: path.join(input.artifactRoot, stage.id, "bronze_report.json"),
+        artifact: path.join(
+          input.artifactRoot,
+          stage.stageId,
+          "bronze_report.json",
+        ),
       },
       level: validation.passed ? "DEFAULT" : "ERROR",
     });
@@ -106,13 +111,15 @@ ${bronzeRows.map((row) => JSON.stringify(row)).join("\n")}
     if (!validation.passed) {
       await recordPipelineStage({
         jobId: input.jobId,
-        stageId: stage.id,
-        stageName: stage.name,
+        stageId: stage.stageId,
+        stageName: stage.stageName,
         status: "failed",
         stageInput: {
           feature_slug: input.featureSlug,
           spec_path: input.specPath,
           events_path: input.eventsPath,
+          source_layer: stage.sourceLayer,
+          target_layer: stage.targetLayer,
         },
         stageOutput: { ...report, validation },
         error: validation.failures.join("; "),
@@ -124,13 +131,15 @@ ${bronzeRows.map((row) => JSON.stringify(row)).join("\n")}
 
     await recordPipelineStage({
       jobId: input.jobId,
-      stageId: stage.id,
-      stageName: stage.name,
+      stageId: stage.stageId,
+      stageName: stage.stageName,
       status: "completed",
       stageInput: {
         feature_slug: input.featureSlug,
         spec_path: input.specPath,
         events_path: input.eventsPath,
+        source_layer: stage.sourceLayer,
+        target_layer: stage.targetLayer,
       },
       stageOutput: {
         ...report,

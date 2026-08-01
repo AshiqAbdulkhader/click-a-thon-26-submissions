@@ -5,7 +5,7 @@ import { callGroqJson } from "../groq.js";
 import { recordPipelineStage } from "../tracking.js";
 import { writeStageJson } from "./artifacts.js";
 import { extractSpecEventOrder, inferMetricHints } from "./eventUtils.js";
-import { instrumentationStageConfig } from "./stageConfig.js";
+import { instrumentationTrackingEvents } from "./trackingEvents.js";
 import { EventProfile, FeatureManifest } from "./types.js";
 
 export async function runSpecParser(input: {
@@ -16,9 +16,9 @@ export async function runSpecParser(input: {
   context: ContextBundle;
   artifactRoot: string;
 }) {
-  const stage = instrumentationStageConfig.specParser;
+  const stage = instrumentationTrackingEvents.specParser;
 
-  return startActiveObservation(stage.id, async (span) => {
+  return startActiveObservation(stage.observationName, async (span) => {
     span.update({
       input: {
         feature_slug: input.featureSlug,
@@ -27,6 +27,8 @@ export async function runSpecParser(input: {
       },
       metadata: {
         agent: stage.agent,
+        source_layer: stage.sourceLayer,
+        target_layer: stage.targetLayer,
         llm_provider: "groq",
         model: process.env.GROQ_MODEL ?? "openai/gpt-oss-20b",
       },
@@ -48,7 +50,7 @@ export async function runSpecParser(input: {
 
     await writeStageJson(
       input.artifactRoot,
-      stage.id,
+      stage.stageId,
       "feature_manifest.json",
       manifest,
     );
@@ -62,7 +64,7 @@ export async function runSpecParser(input: {
         metric_hints: manifest.metric_hints,
         artifact: path.join(
           input.artifactRoot,
-          stage.id,
+          stage.stageId,
           "feature_manifest.json",
         ),
       },
@@ -70,12 +72,14 @@ export async function runSpecParser(input: {
 
     await recordPipelineStage({
       jobId: input.jobId,
-      stageId: stage.id,
-      stageName: stage.name,
+      stageId: stage.stageId,
+      stageName: stage.stageName,
       status: "completed",
       stageInput: {
         feature_slug: input.featureSlug,
         event_names: input.eventProfile.event_order,
+        source_layer: stage.sourceLayer,
+        target_layer: stage.targetLayer,
       },
       stageOutput: {
         feature_name: manifest.feature_name,
@@ -143,7 +147,7 @@ async function buildManifestWithGroq(input: {
           }),
         },
       ],
-      traceName: "groq.feature_manifest",
+      traceName: instrumentationTrackingEvents.specParser.generationName,
       traceInput: {
         task: "feature_manifest_for_schema_generation",
         feature_slug: input.featureSlug,

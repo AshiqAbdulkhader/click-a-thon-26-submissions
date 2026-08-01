@@ -9,7 +9,7 @@ import {
 import { recordPipelineStage } from "../tracking.js";
 import { writeStageJson } from "./artifacts.js";
 import { getPath } from "./eventUtils.js";
-import { instrumentationStageConfig } from "./stageConfig.js";
+import { instrumentationTrackingEvents } from "./trackingEvents.js";
 import {
   EventProfile,
   FeatureManifest,
@@ -26,9 +26,9 @@ export async function runSilverLoader(input: {
   rawEvents: Record<string, unknown>[];
   artifactRoot: string;
 }) {
-  const stage = instrumentationStageConfig.silverLoader;
+  const stage = instrumentationTrackingEvents.silverLoader;
 
-  return startActiveObservation(stage.id, async (span) => {
+  return startActiveObservation(stage.observationName, async (span) => {
     span.update({
       input: {
         table: `silver.${input.schemaPlan.table_name}`,
@@ -37,8 +37,8 @@ export async function runSilverLoader(input: {
       },
       metadata: {
         agent: stage.agent,
-        source_layer: "bronze",
-        target_layer: "silver",
+        source_layer: stage.sourceLayer,
+        target_layer: stage.targetLayer,
       },
     });
 
@@ -80,7 +80,7 @@ ${jsonEachRow}
 
     await writeStageJson(
       input.artifactRoot,
-      stage.id,
+      stage.stageId,
       "load_report.json",
       report,
     );
@@ -90,7 +90,11 @@ ${jsonEachRow}
         table: report.table,
         inserted_rows: report.inserted_rows,
         validation_passed: validation.passed,
-        artifact: path.join(input.artifactRoot, stage.id, "load_report.json"),
+        artifact: path.join(
+          input.artifactRoot,
+          stage.stageId,
+          "load_report.json",
+        ),
       },
       level: validation.passed ? "DEFAULT" : "ERROR",
     });
@@ -98,12 +102,14 @@ ${jsonEachRow}
     if (!validation.passed) {
       await recordPipelineStage({
         jobId: input.jobId,
-        stageId: stage.id,
-        stageName: stage.name,
+        stageId: stage.stageId,
+        stageName: stage.stageName,
         status: "failed",
         stageInput: {
           table: `silver.${input.schemaPlan.table_name}`,
           expected_rows: input.eventProfile.row_count,
+          source_layer: stage.sourceLayer,
+          target_layer: stage.targetLayer,
         },
         stageOutput: report,
         error: validation.failures.join("; "),
@@ -115,12 +121,14 @@ ${jsonEachRow}
 
     await recordPipelineStage({
       jobId: input.jobId,
-      stageId: stage.id,
-      stageName: stage.name,
+      stageId: stage.stageId,
+      stageName: stage.stageName,
       status: "completed",
       stageInput: {
         table: `silver.${input.schemaPlan.table_name}`,
         expected_rows: input.eventProfile.row_count,
+        source_layer: stage.sourceLayer,
+        target_layer: stage.targetLayer,
       },
       stageOutput: report,
     });

@@ -6,7 +6,7 @@ import {
 } from "../context.js";
 import { recordPipelineStage } from "../tracking.js";
 import { writeStageJson, writeStageText } from "./artifacts.js";
-import { instrumentationStageConfig } from "./stageConfig.js";
+import { instrumentationTrackingEvents } from "./trackingEvents.js";
 import { FeatureManifest, SchemaPlan, SilverLoadReport } from "./types.js";
 
 export async function runContextUpdater(input: {
@@ -17,9 +17,9 @@ export async function runContextUpdater(input: {
   loadReport: SilverLoadReport;
   artifactRoot: string;
 }) {
-  const stage = instrumentationStageConfig.contextUpdater;
+  const stage = instrumentationTrackingEvents.contextUpdater;
 
-  return startActiveObservation(stage.id, async (span) => {
+  return startActiveObservation(stage.observationName, async (span) => {
     span.update({
       input: {
         feature_slug: input.featureSlug,
@@ -29,7 +29,8 @@ export async function runContextUpdater(input: {
       },
       metadata: {
         agent: stage.agent,
-        target_layer: "context",
+        source_layer: stage.sourceLayer,
+        target_layer: stage.targetLayer,
       },
     });
 
@@ -47,13 +48,13 @@ export async function runContextUpdater(input: {
 
     await writeStageText(
       input.artifactRoot,
-      stage.id,
+      stage.stageId,
       "context_diff.md",
       renderContextDiff(input.manifest, input.schemaPlan, updatedContext),
     );
     await writeStageJson(
       input.artifactRoot,
-      stage.id,
+      stage.stageId,
       "updated_context.json",
       updatedContext,
     );
@@ -63,21 +64,23 @@ export async function runContextUpdater(input: {
         generated_features: updatedContext.features.length,
         contradictions: updatedContext.contradictions.length,
         artifacts: [
-          path.join(input.artifactRoot, stage.id, "context_diff.md"),
-          path.join(input.artifactRoot, stage.id, "updated_context.json"),
+          path.join(input.artifactRoot, stage.stageId, "context_diff.md"),
+          path.join(input.artifactRoot, stage.stageId, "updated_context.json"),
         ],
       },
     });
 
     await recordPipelineStage({
       jobId: input.jobId,
-      stageId: stage.id,
-      stageName: stage.name,
+      stageId: stage.stageId,
+      stageName: stage.stageName,
       status: "completed",
       stageInput: {
         feature_slug: input.featureSlug,
         table_name: input.schemaPlan.table_name,
         validation_passed: input.loadReport.validation.passed,
+        source_layer: stage.sourceLayer,
+        target_layer: stage.targetLayer,
       },
       stageOutput: {
         generated_features: updatedContext.features.length,

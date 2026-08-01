@@ -2,7 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { startActiveObservation } from "@langfuse/tracing";
 import { loadContextBundle } from "./context.js";
-import { completedInstrumentationStageIds } from "./instrumentation/stageConfig.js";
+import { completedInstrumentationStageIds } from "./instrumentation/trackingEvents.js";
 import { runInstrumentationAgent } from "./instrumentation.js";
 import { pipelineStages } from "./stages.js";
 import { recordPipelineRun, recordPipelineStage } from "./tracking.js";

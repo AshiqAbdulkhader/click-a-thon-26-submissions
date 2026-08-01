@@ -3,7 +3,7 @@ import { startActiveObservation } from "@langfuse/tracing";
 import { recordPipelineStage } from "../tracking.js";
 import { writeStageJson } from "./artifacts.js";
 import { profileEvents } from "./eventUtils.js";
-import { instrumentationStageConfig } from "./stageConfig.js";
+import { instrumentationTrackingEvents } from "./trackingEvents.js";
 
 export async function runEventProfiler(input: {
   jobId: string;
@@ -12,9 +12,9 @@ export async function runEventProfiler(input: {
   rawEvents: Record<string, unknown>[];
   artifactRoot: string;
 }) {
-  const stage = instrumentationStageConfig.eventProfiler;
+  const stage = instrumentationTrackingEvents.eventProfiler;
 
-  return startActiveObservation(stage.id, async (span) => {
+  return startActiveObservation(stage.observationName, async (span) => {
     span.update({
       input: {
         feature_slug: input.featureSlug,
@@ -23,14 +23,15 @@ export async function runEventProfiler(input: {
       },
       metadata: {
         agent: stage.agent,
-        source_layer: "bronze",
+        source_layer: stage.sourceLayer,
+        target_layer: stage.targetLayer,
       },
     });
 
     const profile = profileEvents(input.featureSlug, input.rawEvents);
     await writeStageJson(
       input.artifactRoot,
-      stage.id,
+      stage.stageId,
       "event_profile.json",
       profile,
     );
@@ -40,18 +41,23 @@ export async function runEventProfiler(input: {
         row_count: profile.row_count,
         event_counts: profile.event_counts,
         field_count: profile.fields.length,
-        artifact: path.join(input.artifactRoot, stage.id, "event_profile.json"),
+        artifact: path.join(
+          input.artifactRoot,
+          stage.stageId,
+          "event_profile.json",
+        ),
       },
     });
 
     await recordPipelineStage({
       jobId: input.jobId,
-      stageId: stage.id,
-      stageName: stage.name,
+      stageId: stage.stageId,
+      stageName: stage.stageName,
       status: "completed",
       stageInput: {
         feature_slug: input.featureSlug,
-        source_layer: "bronze",
+        source_layer: stage.sourceLayer,
+        target_layer: stage.targetLayer,
       },
       stageOutput: {
         row_count: profile.row_count,

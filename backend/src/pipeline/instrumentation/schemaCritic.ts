@@ -3,7 +3,7 @@ import { startActiveObservation } from "@langfuse/tracing";
 import { recordPipelineStage } from "../tracking.js";
 import { writeStageText } from "./artifacts.js";
 import { toColumnName } from "./eventUtils.js";
-import { instrumentationStageConfig } from "./stageConfig.js";
+import { instrumentationTrackingEvents } from "./trackingEvents.js";
 import { EventProfile, FeatureManifest, SchemaPlan } from "./types.js";
 
 export async function runSchemaCritic(input: {
@@ -13,9 +13,9 @@ export async function runSchemaCritic(input: {
   manifest: FeatureManifest;
   artifactRoot: string;
 }) {
-  const stage = instrumentationStageConfig.schemaCritic;
+  const stage = instrumentationTrackingEvents.schemaCritic;
 
-  return startActiveObservation(stage.id, async (span) => {
+  return startActiveObservation(stage.observationName, async (span) => {
     span.update({
       input: {
         table: `silver.${input.schemaPlan.table_name}`,
@@ -24,6 +24,8 @@ export async function runSchemaCritic(input: {
       },
       metadata: {
         agent: stage.agent,
+        source_layer: stage.sourceLayer,
+        target_layer: stage.targetLayer,
       },
     });
 
@@ -34,7 +36,7 @@ export async function runSchemaCritic(input: {
     );
     await writeStageText(
       input.artifactRoot,
-      stage.id,
+      stage.stageId,
       "schema_review.md",
       schemaReview,
     );
@@ -46,18 +48,24 @@ export async function runSchemaCritic(input: {
     span.update({
       output: {
         verdict,
-        artifact: path.join(input.artifactRoot, stage.id, "schema_review.md"),
+        artifact: path.join(
+          input.artifactRoot,
+          stage.stageId,
+          "schema_review.md",
+        ),
       },
     });
 
     await recordPipelineStage({
       jobId: input.jobId,
-      stageId: stage.id,
-      stageName: stage.name,
+      stageId: stage.stageId,
+      stageName: stage.stageName,
       status: "completed",
       stageInput: {
         table: `silver.${input.schemaPlan.table_name}`,
         column_count: input.schemaPlan.columns.length,
+        source_layer: stage.sourceLayer,
+        target_layer: stage.targetLayer,
       },
       stageOutput: {
         verdict,

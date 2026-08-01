@@ -3,7 +3,7 @@ import { startActiveObservation } from "@langfuse/tracing";
 import { recordPipelineStage } from "../tracking.js";
 import { writeStageJson, writeStageText } from "./artifacts.js";
 import { toColumnName } from "./eventUtils.js";
-import { instrumentationStageConfig } from "./stageConfig.js";
+import { instrumentationTrackingEvents } from "./trackingEvents.js";
 import {
   EventProfile,
   FeatureManifest,
@@ -18,9 +18,9 @@ export async function runSchemaGenerator(input: {
   eventProfile: EventProfile;
   artifactRoot: string;
 }) {
-  const stage = instrumentationStageConfig.schemaGenerator;
+  const stage = instrumentationTrackingEvents.schemaGenerator;
 
-  return startActiveObservation(stage.id, async (span) => {
+  return startActiveObservation(stage.observationName, async (span) => {
     span.update({
       input: {
         feature_slug: input.featureSlug,
@@ -30,7 +30,8 @@ export async function runSchemaGenerator(input: {
       },
       metadata: {
         agent: stage.agent,
-        target_layer: "silver",
+        source_layer: stage.sourceLayer,
+        target_layer: stage.targetLayer,
       },
     });
 
@@ -40,14 +41,19 @@ export async function runSchemaGenerator(input: {
 
     await writeStageJson(
       input.artifactRoot,
-      stage.id,
+      stage.stageId,
       "schema_plan.json",
       schemaPlan,
     );
-    await writeStageText(input.artifactRoot, stage.id, "schema.sql", schemaSql);
+    await writeStageText(
+      input.artifactRoot,
+      stage.stageId,
+      "schema.sql",
+      schemaSql,
+    );
     await writeStageJson(
       input.artifactRoot,
-      stage.id,
+      stage.stageId,
       "mapping.json",
       mappingPlan,
     );
@@ -60,22 +66,24 @@ export async function runSchemaGenerator(input: {
         order_by: schemaPlan.order_by,
         column_count: schemaPlan.columns.length,
         artifacts: [
-          path.join(input.artifactRoot, stage.id, "schema_plan.json"),
-          path.join(input.artifactRoot, stage.id, "schema.sql"),
-          path.join(input.artifactRoot, stage.id, "mapping.json"),
+          path.join(input.artifactRoot, stage.stageId, "schema_plan.json"),
+          path.join(input.artifactRoot, stage.stageId, "schema.sql"),
+          path.join(input.artifactRoot, stage.stageId, "mapping.json"),
         ],
       },
     });
 
     await recordPipelineStage({
       jobId: input.jobId,
-      stageId: stage.id,
-      stageName: stage.name,
+      stageId: stage.stageId,
+      stageName: stage.stageName,
       status: "completed",
       stageInput: {
         feature_slug: input.featureSlug,
         workflow_type: input.manifest.workflow_type,
         primary_entity: input.manifest.primary_entity,
+        source_layer: stage.sourceLayer,
+        target_layer: stage.targetLayer,
       },
       stageOutput: {
         table: `silver.${schemaPlan.table_name}`,
