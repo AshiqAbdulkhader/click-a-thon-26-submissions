@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
 import { executeClickHouse, queryClickHouseText } from "./clickhouse.js";
+import { EventProfile, SchemaPlan } from "./instrumentation/types.js";
 
 export type ContextBundle = {
   baseContext: string;
@@ -27,6 +28,47 @@ export type GeneratedContextRegistry = {
     summary: string;
     evidence: string;
   }>;
+  columns: Array<{
+    table_name: string;
+    column_name: string;
+    clickhouse_type: string;
+    source_path: string | null;
+    semantic_role: string;
+    is_nullable: boolean;
+  }>;
+  workflows: Array<{
+    feature_slug: string;
+    table_name: string;
+    workflow_type: string;
+    start_event: string | null;
+    success_event: string | null;
+    primary_entity: string;
+    primary_entity_column: string;
+    segment_columns: string[];
+  }>;
+  metrics: Array<{
+    metric_name: string;
+    feature_slug: string;
+    formula_sql: string;
+    grain: string;
+    segment_columns: string[];
+  }>;
+  joins: Array<{
+    left_table: string;
+    left_column: string;
+    right_table: string;
+    right_column: string;
+    grain: string;
+    confidence: number;
+  }>;
+  schema_quality: Array<{
+    table_name: string;
+    order_by: string[];
+    partition_by: string;
+    ttl: string;
+    materialized_views: string[];
+    validation_passed: boolean;
+  }>;
 };
 
 const emptyRegistry: GeneratedContextRegistry = {
@@ -49,6 +91,11 @@ const emptyRegistry: GeneratedContextRegistry = {
         "Metric definitions contain both formulas; analytics must choose based on question type.",
     },
   ],
+  columns: [],
+  workflows: [],
+  metrics: [],
+  joins: [],
+  schema_quality: [],
 };
 
 export async function loadContextBundle(
@@ -87,6 +134,8 @@ export async function updateGeneratedContext(input: {
   success_event: string | null;
   metric_hints: string[];
   validation: Record<string, unknown>;
+  schema_plan: SchemaPlan;
+  event_profile: EventProfile;
 }) {
   await ensureContextTables();
   await executeClickHouse(`INSERT INTO context.feature_registry FORMAT JSONEachRow
@@ -137,6 +186,8 @@ ${[
   .map((row) => JSON.stringify(row))
   .join("\n")}
 `);
+
+  await writeSchemaMemory(input);
 
   return readGeneratedContext();
 }
@@ -228,6 +279,104 @@ CREATE TABLE IF NOT EXISTS context.contradictions
 ENGINE = ReplacingMergeTree(detected_at)
 ORDER BY (id)
 `);
+
+  await executeClickHouse(`
+CREATE TABLE IF NOT EXISTS context.column_registry
+(
+    feature_slug String,
+    table_name String,
+    column_name String,
+    clickhouse_type String,
+    source_path String,
+    semantic_role LowCardinality(String),
+    is_nullable UInt8,
+    sample_values_json String,
+    reason String,
+    confidence Float32,
+    source_job_id String,
+    updated_at DateTime64(3) DEFAULT now64(3)
+)
+ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (table_name, column_name)
+`);
+
+  await executeClickHouse(`
+CREATE TABLE IF NOT EXISTS context.workflow_registry
+(
+    feature_slug String,
+    table_name String,
+    workflow_type LowCardinality(String),
+    ordered_events_json String,
+    start_event String,
+    success_event String,
+    primary_entity String,
+    primary_entity_column String,
+    segment_columns_json String,
+    source_job_id String,
+    updated_at DateTime64(3) DEFAULT now64(3)
+)
+ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (feature_slug)
+`);
+
+  await executeClickHouse(`
+CREATE TABLE IF NOT EXISTS context.metric_registry
+(
+    metric_id String,
+    feature_slug String,
+    metric_name String,
+    formula_sql String,
+    numerator_definition String,
+    denominator_definition String,
+    grain String,
+    required_tables_json String,
+    segment_columns_json String,
+    caveats String,
+    confidence Float32,
+    source_job_id String,
+    updated_at DateTime64(3) DEFAULT now64(3)
+)
+ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (metric_id)
+`);
+
+  await executeClickHouse(`
+CREATE TABLE IF NOT EXISTS context.join_registry
+(
+    join_id String,
+    left_table String,
+    left_column String,
+    right_table String,
+    right_column String,
+    join_type LowCardinality(String),
+    grain String,
+    confidence Float32,
+    evidence String,
+    source_job_id String,
+    updated_at DateTime64(3) DEFAULT now64(3)
+)
+ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (join_id)
+`);
+
+  await executeClickHouse(`
+CREATE TABLE IF NOT EXISTS context.schema_quality_registry
+(
+    feature_slug String,
+    table_name String,
+    engine String,
+    partition_by String,
+    order_by_json String,
+    ttl String,
+    materialized_views_json String,
+    validation_json String,
+    validation_passed UInt8,
+    source_job_id String,
+    updated_at DateTime64(3) DEFAULT now64(3)
+)
+ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (table_name)
+`);
 }
 
 async function ingestBaseContextDocuments(input: {
@@ -282,6 +431,242 @@ ${emptyRegistry.contradictions
   )
   .join("\n")}
 `);
+
+  await writeBaseSchemaMemory({
+    jobId: input.jobId,
+    existingDdl: input.existingDdl,
+  });
+}
+
+async function writeSchemaMemory(input: {
+  job_id: string;
+  feature_slug: string;
+  table_name: string;
+  primary_entity: string;
+  workflow_type: string;
+  event_names: string[];
+  success_event: string | null;
+  metric_hints: string[];
+  validation: Record<string, unknown>;
+  schema_plan: SchemaPlan;
+  event_profile: EventProfile;
+}) {
+  const fullTableName = `silver.${input.table_name}`;
+  const fieldProfiles = new Map(
+    input.event_profile.fields.map((field) => [field.path, field]),
+  );
+  const columns = input.schema_plan.columns.map((column) => {
+    const field = column.source_path
+      ? fieldProfiles.get(column.source_path)
+      : null;
+    return {
+      feature_slug: input.feature_slug,
+      table_name: fullTableName,
+      column_name: column.name,
+      clickhouse_type: column.type,
+      source_path: column.source_path ?? "",
+      semantic_role: semanticRoleForColumn(column.name, column.type),
+      is_nullable: column.type.startsWith("Nullable(") ? 1 : 0,
+      sample_values_json: JSON.stringify(field?.sample_values ?? []),
+      reason: column.reason,
+      confidence: field || !column.source_path ? 1 : 0.7,
+      source_job_id: input.job_id,
+    };
+  });
+
+  await insertJsonRows("context.column_registry", columns);
+
+  const primaryEntityColumn = resolveContextPrimaryEntityColumn(
+    input.primary_entity,
+    input.schema_plan.columns.map((column) => column.name),
+  );
+  const segmentColumns = input.schema_plan.columns
+    .filter(
+      (column) =>
+        semanticRoleForColumn(column.name, column.type) === "dimension",
+    )
+    .map((column) => column.name);
+
+  await insertJsonRows("context.workflow_registry", [
+    {
+      feature_slug: input.feature_slug,
+      table_name: fullTableName,
+      workflow_type: input.workflow_type,
+      ordered_events_json: JSON.stringify(input.event_names),
+      start_event: input.event_names[0] ?? "",
+      success_event: input.success_event ?? "",
+      primary_entity: input.primary_entity,
+      primary_entity_column: primaryEntityColumn,
+      segment_columns_json: JSON.stringify(segmentColumns),
+      source_job_id: input.job_id,
+    },
+  ]);
+
+  const metrics = buildMetricMemory({
+    featureSlug: input.feature_slug,
+    tableName: fullTableName,
+    metricHints: input.metric_hints,
+    eventNames: input.event_names,
+    successEvent: input.success_event,
+    primaryEntityColumn,
+    segmentColumns,
+    jobId: input.job_id,
+  });
+  await insertJsonRows("context.metric_registry", metrics);
+
+  await insertJsonRows(
+    "context.join_registry",
+    buildJoinMemory({
+      tableName: fullTableName,
+      columns: input.schema_plan.columns.map((column) => column.name),
+      jobId: input.job_id,
+    }),
+  );
+
+  await insertJsonRows("context.schema_quality_registry", [
+    {
+      feature_slug: input.feature_slug,
+      table_name: fullTableName,
+      engine: input.schema_plan.engine,
+      partition_by: input.schema_plan.partition_by,
+      order_by_json: JSON.stringify(input.schema_plan.order_by),
+      ttl: input.schema_plan.ttl,
+      materialized_views_json: JSON.stringify(
+        input.schema_plan.materialized_views.map((view) => view.name),
+      ),
+      validation_json: JSON.stringify(input.validation),
+      validation_passed: Boolean(
+        (input.validation as { passed?: unknown }).passed,
+      )
+        ? 1
+        : 0,
+      source_job_id: input.job_id,
+    },
+  ]);
+}
+
+async function writeBaseSchemaMemory(input: {
+  jobId: string;
+  existingDdl: string;
+}) {
+  const tables = parseCreateTables(input.existingDdl);
+  const columnRows = tables.flatMap((table) =>
+    table.columns.map((column) => ({
+      feature_slug: "base_context",
+      table_name: table.name,
+      column_name: column.name,
+      clickhouse_type: column.type,
+      source_path: column.name,
+      semantic_role: semanticRoleForColumn(column.name, column.type),
+      is_nullable: column.type.startsWith("Nullable(") ? 1 : 0,
+      sample_values_json: "[]",
+      reason: "Parsed from data/ddl.sql during context bootstrap.",
+      confidence: 1,
+      source_job_id: input.jobId,
+    })),
+  );
+  await insertJsonRows("context.column_registry", columnRows);
+
+  await insertJsonRows(
+    "context.join_registry",
+    tables.flatMap((table) =>
+      buildJoinMemory({
+        tableName: table.name,
+        columns: table.columns.map((column) => column.name),
+        jobId: input.jobId,
+      }),
+    ),
+  );
+
+  await insertJsonRows("context.workflow_registry", [
+    {
+      feature_slug: "base_conversion_funnel",
+      table_name:
+        "destination_card_clicked|application_started|document_uploaded|purchase_completed",
+      workflow_type: "funnel",
+      ordered_events_json: JSON.stringify([
+        "destination_card_clicked",
+        "application_started",
+        "document_uploaded",
+        "purchase_completed",
+      ]),
+      start_event: "destination_card_clicked",
+      success_event: "purchase_completed",
+      primary_entity: "application",
+      primary_entity_column: "application_id",
+      segment_columns_json: JSON.stringify([
+        "device_type",
+        "os",
+        "geoip_country_code",
+        "destination",
+        "citizenship",
+      ]),
+      source_job_id: input.jobId,
+    },
+  ]);
+
+  await insertJsonRows("context.metric_registry", [
+    {
+      metric_id: "base:funnel_conversion",
+      feature_slug: "base_conversion_funnel",
+      metric_name: "funnel_conversion_rate",
+      formula_sql:
+        "uniq(purchase_completed.user_id) / nullIf(uniq(application_started.user_id), 0)",
+      numerator_definition: "distinct users with purchase_completed",
+      denominator_definition: "distinct users with application_started",
+      grain: "user",
+      required_tables_json: JSON.stringify([
+        "application_started",
+        "purchase_completed",
+      ]),
+      segment_columns_json: JSON.stringify([
+        "device_type",
+        "os",
+        "geoip_country_code",
+        "destination",
+      ]),
+      caveats:
+        "Use for funnel dashboards; leadership conversion may use sessions instead.",
+      confidence: 0.9,
+      source_job_id: input.jobId,
+    },
+    {
+      metric_id: "base:passport_capture_pass_rate",
+      feature_slug: "base_conversion_funnel",
+      metric_name: "passport_capture_pass_rate",
+      formula_sql:
+        "countIf(is_crossed_failed_attempt_threshold = 0) / nullIf(count(), 0) FROM document_uploaded",
+      numerator_definition:
+        "document uploads without crossed failed-attempt threshold",
+      denominator_definition: "all document uploads",
+      grain: "event",
+      required_tables_json: JSON.stringify(["document_uploaded"]),
+      segment_columns_json: JSON.stringify([
+        "device_type",
+        "os",
+        "destination",
+      ]),
+      caveats:
+        "Base context links this to passport capture quality; validate device cuts before conclusions.",
+      confidence: 0.9,
+      source_job_id: input.jobId,
+    },
+    {
+      metric_id: "base:revenue_per_conversion",
+      feature_slug: "base_conversion_funnel",
+      metric_name: "revenue_per_conversion",
+      formula_sql: "avg(value) FROM purchase_completed",
+      numerator_definition: "purchase_completed.value",
+      denominator_definition: "converted purchases",
+      grain: "purchase",
+      required_tables_json: JSON.stringify(["purchase_completed"]),
+      segment_columns_json: JSON.stringify(["currency", "destination"]),
+      caveats:
+        "Values are event currency amounts; normalize currency before cross-currency comparisons.",
+      confidence: 0.85,
+      source_job_id: input.jobId,
+    },
+  ]);
 }
 
 async function readGeneratedContext(): Promise<GeneratedContextRegistry> {
@@ -309,6 +694,87 @@ FROM context.contradictions
 FINAL
 WHERE status = 'open'
 ORDER BY id
+FORMAT TabSeparated
+`)
+  ).trim();
+
+  const columnsRaw = (
+    await queryClickHouseText(`
+SELECT
+  table_name,
+  column_name,
+  clickhouse_type,
+  source_path,
+  semantic_role,
+  is_nullable
+FROM context.column_registry FINAL
+ORDER BY table_name, column_name
+LIMIT 500
+FORMAT TabSeparated
+`)
+  ).trim();
+
+  const workflowsRaw = (
+    await queryClickHouseText(`
+SELECT
+  feature_slug,
+  table_name,
+  workflow_type,
+  start_event,
+  success_event,
+  primary_entity,
+  primary_entity_column,
+  segment_columns_json
+FROM context.workflow_registry FINAL
+ORDER BY updated_at DESC
+LIMIT 50
+FORMAT TabSeparated
+`)
+  ).trim();
+
+  const metricsRaw = (
+    await queryClickHouseText(`
+SELECT
+  metric_name,
+  feature_slug,
+  formula_sql,
+  grain,
+  segment_columns_json
+FROM context.metric_registry FINAL
+ORDER BY updated_at DESC
+LIMIT 100
+FORMAT TabSeparated
+`)
+  ).trim();
+
+  const joinsRaw = (
+    await queryClickHouseText(`
+SELECT
+  left_table,
+  left_column,
+  right_table,
+  right_column,
+  grain,
+  confidence
+FROM context.join_registry FINAL
+ORDER BY updated_at DESC
+LIMIT 100
+FORMAT TabSeparated
+`)
+  ).trim();
+
+  const qualityRaw = (
+    await queryClickHouseText(`
+SELECT
+  table_name,
+  order_by_json,
+  partition_by,
+  ttl,
+  materialized_views_json,
+  validation_passed
+FROM context.schema_quality_registry FINAL
+ORDER BY updated_at DESC
+LIMIT 100
 FORMAT TabSeparated
 `)
   ).trim();
@@ -344,11 +810,331 @@ FORMAT TabSeparated
           return { id, summary, evidence };
         })
       : emptyRegistry.contradictions,
+    columns: columnsRaw
+      ? columnsRaw.split("\n").map((line) => {
+          const [
+            table_name,
+            column_name,
+            clickhouse_type,
+            source_path,
+            semantic_role,
+            is_nullable,
+          ] = line.split("\t");
+          return {
+            table_name,
+            column_name,
+            clickhouse_type,
+            source_path: source_path || null,
+            semantic_role,
+            is_nullable: is_nullable === "1",
+          };
+        })
+      : [],
+    workflows: workflowsRaw
+      ? workflowsRaw.split("\n").map((line) => {
+          const [
+            feature_slug,
+            table_name,
+            workflow_type,
+            start_event,
+            success_event,
+            primary_entity,
+            primary_entity_column,
+            segment_columns_json,
+          ] = line.split("\t");
+          return {
+            feature_slug,
+            table_name,
+            workflow_type,
+            start_event: start_event || null,
+            success_event: success_event || null,
+            primary_entity,
+            primary_entity_column,
+            segment_columns: parseJsonArray(segment_columns_json),
+          };
+        })
+      : [],
+    metrics: metricsRaw
+      ? metricsRaw.split("\n").map((line) => {
+          const [
+            metric_name,
+            feature_slug,
+            formula_sql,
+            grain,
+            segment_columns_json,
+          ] = line.split("\t");
+          return {
+            metric_name,
+            feature_slug,
+            formula_sql,
+            grain,
+            segment_columns: parseJsonArray(segment_columns_json),
+          };
+        })
+      : [],
+    joins: joinsRaw
+      ? joinsRaw.split("\n").map((line) => {
+          const [
+            left_table,
+            left_column,
+            right_table,
+            right_column,
+            grain,
+            confidence,
+          ] = line.split("\t");
+          return {
+            left_table,
+            left_column,
+            right_table,
+            right_column,
+            grain,
+            confidence: Number(confidence),
+          };
+        })
+      : [],
+    schema_quality: qualityRaw
+      ? qualityRaw.split("\n").map((line) => {
+          const [
+            table_name,
+            order_by_json,
+            partition_by,
+            ttl,
+            materialized_views_json,
+            validation_passed,
+          ] = line.split("\t");
+          return {
+            table_name,
+            order_by: parseJsonArray(order_by_json),
+            partition_by,
+            ttl,
+            materialized_views: parseJsonArray(materialized_views_json),
+            validation_passed: validation_passed === "1",
+          };
+        })
+      : [],
   };
 }
 
 function hash(content: string) {
   return createHash("sha256").update(content).digest("hex");
+}
+
+async function insertJsonRows(
+  tableName: string,
+  rows: Record<string, unknown>[],
+) {
+  if (rows.length === 0) {
+    return;
+  }
+  await executeClickHouse(`INSERT INTO ${tableName} FORMAT JSONEachRow
+${rows.map((row) => JSON.stringify(row)).join("\n")}
+`);
+}
+
+function semanticRoleForColumn(columnName: string, clickhouseType: string) {
+  if (["job_id", "ingested_at"].includes(columnName)) {
+    return "operational";
+  }
+  if (columnName === "raw_json") {
+    return "raw_payload";
+  }
+  if (columnName === "event_name") {
+    return "event_name";
+  }
+  if (columnName === "timestamp" || columnName.endsWith("_at")) {
+    return "timestamp";
+  }
+  if (columnName === "event_id" || columnName.endsWith("_id")) {
+    return "entity_id";
+  }
+  if (
+    /(amount|value|rate|price|revenue|latency|duration|count|attempts|depth|time)/i.test(
+      columnName,
+    )
+  ) {
+    return "metric_value";
+  }
+  if (clickhouseType.includes("Bool") || columnName.startsWith("is_")) {
+    return "boolean_flag";
+  }
+  if (
+    /(currency|country|city|destination|device|os|version|channel|method|type|source|flow|status|step)/i.test(
+      columnName,
+    )
+  ) {
+    return "dimension";
+  }
+  return clickhouseType.includes("String") ? "dimension" : "metric_value";
+}
+
+function resolveContextPrimaryEntityColumn(
+  primaryEntity: string,
+  columnNames: string[],
+) {
+  const names = new Set(columnNames);
+  const normalized = primaryEntity.replace(/[^a-zA-Z0-9]+/g, "_");
+  if (names.has(normalized)) {
+    return normalized;
+  }
+  if (names.has(`${normalized}_id`)) {
+    return `${normalized}_id`;
+  }
+  if (names.has("application_id")) {
+    return "application_id";
+  }
+  return names.has("user_id") ? "user_id" : "";
+}
+
+function buildMetricMemory(input: {
+  featureSlug: string;
+  tableName: string;
+  metricHints: string[];
+  eventNames: string[];
+  successEvent: string | null;
+  primaryEntityColumn: string;
+  segmentColumns: string[];
+  jobId: string;
+}) {
+  const startEvent = input.eventNames[0] ?? "";
+  const successEvent = input.successEvent ?? input.eventNames.at(-1) ?? "";
+  const metrics = input.metricHints.map((hint) => ({
+    metric_id: `${input.featureSlug}:${slugify(hint)}`,
+    feature_slug: input.featureSlug,
+    metric_name: hint,
+    formula_sql: metricFormulaSql({
+      tableName: input.tableName,
+      metricName: hint,
+      startEvent,
+      successEvent,
+      primaryEntityColumn: input.primaryEntityColumn,
+    }),
+    numerator_definition: successEvent
+      ? `${input.primaryEntityColumn} reaching ${successEvent}`
+      : "feature-specific numerator",
+    denominator_definition: startEvent
+      ? `${input.primaryEntityColumn} reaching ${startEvent}`
+      : "feature-specific denominator",
+    grain: input.primaryEntityColumn || "event",
+    required_tables_json: JSON.stringify([input.tableName]),
+    segment_columns_json: JSON.stringify(input.segmentColumns),
+    caveats:
+      "Generated from feature metric hints; analytics agent should verify exact denominator against the user question.",
+    confidence: 0.75,
+    source_job_id: input.jobId,
+  }));
+
+  if (startEvent && successEvent && input.primaryEntityColumn) {
+    metrics.unshift({
+      metric_id: `${input.featureSlug}:primary_conversion`,
+      feature_slug: input.featureSlug,
+      metric_name: `${startEvent}_to_${successEvent}_conversion`,
+      formula_sql: metricFormulaSql({
+        tableName: input.tableName,
+        metricName: "conversion",
+        startEvent,
+        successEvent,
+        primaryEntityColumn: input.primaryEntityColumn,
+      }),
+      numerator_definition: `${input.primaryEntityColumn} reaching ${successEvent}`,
+      denominator_definition: `${input.primaryEntityColumn} reaching ${startEvent}`,
+      grain: input.primaryEntityColumn,
+      required_tables_json: JSON.stringify([input.tableName]),
+      segment_columns_json: JSON.stringify(input.segmentColumns),
+      caveats:
+        "Primary feature conversion metric generated from ordered feature events.",
+      confidence: 0.9,
+      source_job_id: input.jobId,
+    });
+  }
+
+  return metrics;
+}
+
+function metricFormulaSql(input: {
+  tableName: string;
+  metricName: string;
+  startEvent: string;
+  successEvent: string;
+  primaryEntityColumn: string;
+}) {
+  if (!input.startEvent || !input.successEvent || !input.primaryEntityColumn) {
+    return `-- Metric '${input.metricName}' requires feature-specific SQL.`;
+  }
+  return `uniqIf(${input.primaryEntityColumn}, event_name = '${input.successEvent}') / nullIf(uniqIf(${input.primaryEntityColumn}, event_name = '${input.startEvent}'), 0) FROM ${input.tableName}`;
+}
+
+function buildJoinMemory(input: {
+  tableName: string;
+  columns: string[];
+  jobId: string;
+}) {
+  const joins = [];
+  if (input.columns.includes("user_id")) {
+    joins.push({
+      join_id: `${input.tableName}:user_id:base_events`,
+      left_table: input.tableName,
+      left_column: "user_id",
+      right_table: "*",
+      right_column: "user_id",
+      join_type: "entity",
+      grain: "user",
+      confidence: 0.9,
+      evidence: "Atlys context says user_id joins all event streams.",
+      source_job_id: input.jobId,
+    });
+  }
+  if (input.columns.includes("application_id")) {
+    joins.push({
+      join_id: `${input.tableName}:application_id:application_funnel`,
+      left_table: input.tableName,
+      left_column: "application_id",
+      right_table:
+        "application_started|document_uploaded|pay_now_clicked|purchase_completed",
+      right_column: "application_id",
+      join_type: "entity",
+      grain: "application",
+      confidence: 0.9,
+      evidence:
+        "Base context join map links application_id across application_started and downstream funnel tables.",
+      source_job_id: input.jobId,
+    });
+  }
+  return joins;
+}
+
+function parseCreateTables(ddl: string) {
+  const tables: Array<{
+    name: string;
+    columns: Array<{ name: string; type: string }>;
+  }> = [];
+  const tableRegex =
+    /CREATE TABLE\s+([a-zA-Z0-9_]+)\s*\(([\s\S]*?)\)\s*ENGINE/g;
+  for (const match of ddl.matchAll(tableRegex)) {
+    const [, name, body] = match;
+    const columns = body
+      .split("\n")
+      .map((line) => line.trim().replace(/,$/, ""))
+      .filter(Boolean)
+      .map((line) => {
+        const columnMatch = line.match(/^([a-zA-Z0-9_]+)\s+(.+)$/);
+        if (!columnMatch) {
+          return null;
+        }
+        return { name: columnMatch[1], type: columnMatch[2] };
+      })
+      .filter((column): column is { name: string; type: string } =>
+        Boolean(column),
+      );
+    tables.push({ name, columns });
+  }
+  return tables;
+}
+
+function slugify(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
 }
 
 function parseJsonArray(value: string | undefined): string[] {

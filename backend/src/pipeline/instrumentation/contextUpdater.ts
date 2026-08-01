@@ -7,13 +7,19 @@ import {
 import { recordPipelineStage } from "../tracking.js";
 import { writeStageJson, writeStageText } from "./artifacts.js";
 import { instrumentationTrackingEvents } from "./trackingEvents.js";
-import { FeatureManifest, SchemaPlan, SilverLoadReport } from "./types.js";
+import {
+  EventProfile,
+  FeatureManifest,
+  SchemaPlan,
+  SilverLoadReport,
+} from "./types.js";
 
 export async function runContextUpdater(input: {
   jobId: string;
   featureSlug: string;
   manifest: FeatureManifest;
   schemaPlan: SchemaPlan;
+  eventProfile: EventProfile;
   loadReport: SilverLoadReport;
   artifactRoot: string;
 }) {
@@ -44,6 +50,8 @@ export async function runContextUpdater(input: {
       success_event: input.manifest.success_event,
       metric_hints: input.manifest.metric_hints,
       validation: input.loadReport.validation,
+      schema_plan: input.schemaPlan,
+      event_profile: input.eventProfile,
     });
 
     await writeStageText(
@@ -62,6 +70,10 @@ export async function runContextUpdater(input: {
     span.update({
       output: {
         generated_features: updatedContext.features.length,
+        columns: updatedContext.columns.length,
+        workflows: updatedContext.workflows.length,
+        metrics: updatedContext.metrics.length,
+        joins: updatedContext.joins.length,
         contradictions: updatedContext.contradictions.length,
         artifacts: [
           path.join(input.artifactRoot, stage.stageId, "context_diff.md"),
@@ -84,6 +96,10 @@ export async function runContextUpdater(input: {
       },
       stageOutput: {
         generated_features: updatedContext.features.length,
+        columns: updatedContext.columns.length,
+        workflows: updatedContext.workflows.length,
+        metrics: updatedContext.metrics.length,
+        joins: updatedContext.joins.length,
         contradictions: updatedContext.contradictions.length,
       },
     });
@@ -120,6 +136,10 @@ ${manifest.context_notes.map((note) => `- ${note}`).join("\n")}
 ## Registry Status
 
 - Known generated features: ${registry.features.length}
+- Known columns: ${registry.columns.length}
+- Known workflows: ${registry.workflows.length}
+- Known metrics: ${registry.metrics.length}
+- Known joins: ${registry.joins.length}
 - Known context contradictions: ${registry.contradictions.length}
 `;
 }

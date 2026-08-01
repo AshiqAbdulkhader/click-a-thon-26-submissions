@@ -83,6 +83,7 @@ export async function runInstrumentationAgent(input: {
     featureSlug,
     manifest,
     schemaPlan,
+    eventProfile,
     loadReport,
     artifactRoot: input.artifactRoot,
   });
