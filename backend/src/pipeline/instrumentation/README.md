@@ -12,7 +12,7 @@ Instrumentation does:
 - Persist raw spec/event data into Bronze ClickHouse tables.
 - Profile raw events.
 - Parse product semantics into a feature manifest.
-- Run a schema design feedback loop: LLM full-plan draft, LLM schema critic, LLM revision when needed, deterministic fallback, guardrail review, repair.
+- Run a schema/load feedback loop: LLM full-plan draft, LLM schema critic, LLM revision when needed, deterministic fallback, guardrail review, repair, load validation, and one repair retry when execution fails.
 - Generate and review a Silver ClickHouse schema.
 - Define reusable materialized views / aggregations when useful.
 - Create/load the Silver table and materialized views.
@@ -47,6 +47,8 @@ spec folder
        -> materialized view / aggregation plan
   -> 05 Schema Critic (blocking gate)
   -> 06 Silver Loader
+       -> if load/validation fails, feed the error back into 04 Schema Generator
+       -> retry schema critic + loader once
   -> 07 Context Updater
 ```
 
@@ -60,6 +62,8 @@ observe raw spec/events + retrieve context
   -> validate with deterministic guardrails
   -> repair unsafe output before execution
   -> act in ClickHouse
+  -> validate loaded rows
+  -> if validation fails, feed the failure back into schema generation and retry once
   -> remember the validated schema in context
 ```
 
@@ -336,10 +340,12 @@ Input:
 What happens:
 
 - Executes `CREATE TABLE IF NOT EXISTS silver.<feature_slug>_events`.
+- Drops/recreates generated Silver and Gold objects before applying the current schema plan, so reruns do not silently reuse stale tables.
 - Executes any generated Gold aggregation target tables and materialized views.
 - Normalizes each raw event into the generated schema.
 - Inserts rows with `FORMAT JSONEachRow`.
 - Validates the inserted Silver rows.
+- On load or validation failure, the orchestrator records the failure in `04_schema_generator/repair_loop.json`, sends the feedback into schema generation, and retries once.
 
 Validation checks:
 
@@ -358,6 +364,7 @@ ClickHouse writes:
 Artifact:
 
 - `06_silver_loader/load_report.json`
+- `04_schema_generator/repair_loop.json`
 
 Output to next step:
 

@@ -66,6 +66,7 @@ export const instrumentationTrackingEvents = {
       "schema.sql",
       "materialized_views.sql",
       "mapping.json",
+      "repair_loop.json",
     ],
     trackedInputs: [
       "feature_slug",

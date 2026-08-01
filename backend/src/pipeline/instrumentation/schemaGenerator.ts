@@ -20,6 +20,7 @@ export async function runSchemaGenerator(input: {
   eventProfile: EventProfile;
   context: ContextBundle;
   artifactRoot: string;
+  executionFeedback?: string[];
 }) {
   const stage = instrumentationTrackingEvents.schemaGenerator;
 
@@ -30,6 +31,7 @@ export async function runSchemaGenerator(input: {
         workflow_type: input.manifest.workflow_type,
         primary_entity: input.manifest.primary_entity,
         field_count: input.eventProfile.fields.length,
+        execution_feedback: input.executionFeedback ?? [],
       },
       metadata: {
         agent: stage.agent,
@@ -188,6 +190,7 @@ async function runSchemaDesignLoop(input: {
   manifest: FeatureManifest;
   eventProfile: EventProfile;
   context: ContextBundle;
+  executionFeedback?: string[];
 }): Promise<SchemaDesignLoop> {
   const iterations: SchemaDesignLoop["iterations"] = [];
   const fallbackPlan = buildSchemaPlan(input.manifest, input.eventProfile);
@@ -329,6 +332,7 @@ async function requestSchemaDesignDraft(
     manifest: FeatureManifest;
     eventProfile: EventProfile;
     context: ContextBundle;
+    executionFeedback?: string[];
   },
   relevantContext: ReturnType<typeof retrieveRelevantContextForSpec>,
 ): Promise<SchemaDesignDraft | null> {
@@ -344,6 +348,7 @@ async function requestSchemaDesignDraft(
         feature_slug: input.featureSlug,
         workflow_type: input.manifest.workflow_type,
         field_count: input.eventProfile.fields.length,
+        execution_feedback_count: input.executionFeedback?.length ?? 0,
         context_features: input.context.generatedContext.features.length,
         retrieved_workflows: relevantContext.similar_workflows.length,
         retrieved_columns: relevantContext.column_type_precedents.length,
@@ -404,7 +409,9 @@ async function requestSchemaDesignDraft(
               "Use Nullable types for fields missing from some events or containing nulls.",
               "Suggest materialized views only for reusable aggregates.",
               "Do not copy context errors into the schema. If context conflicts with event evidence, trust event evidence.",
+              "If execution_feedback is present, fix the schema or mapping decision that caused the failed load/validation attempt.",
             ],
+            execution_feedback: input.executionFeedback ?? [],
             feature_manifest: input.manifest,
             event_profile: input.eventProfile,
             relevant_context: relevantContext,
