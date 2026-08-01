@@ -818,10 +818,7 @@ function normalizeDesignDraft(
     draft.partition_by === "toYYYYMM(timestamp)"
       ? draft.partition_by
       : fallbackPlan.partition_by;
-  const ttl =
-    draft.ttl && /^timestamp \+ INTERVAL \d+ MONTH$/.test(draft.ttl)
-      ? draft.ttl
-      : fallbackPlan.ttl;
+  const ttl = normalizeTtl(draft.ttl, fallbackPlan.ttl);
 
   return repairSchemaPlan(
     {
@@ -976,6 +973,10 @@ function reviewSchemaPlan(
     issues.push("order_by_missing_event_id");
   }
 
+  if (parseTtlMonths(plan.ttl) < MIN_TTL_MONTHS) {
+    issues.push(`ttl_too_short:${plan.ttl}`);
+  }
+
   for (const field of eventProfile.fields) {
     if (
       !["event", "id", "timestamp"].includes(field.path) &&
@@ -1019,11 +1020,23 @@ function repairSchemaPlan(
   return {
     ...plan,
     partition_by: plan.partition_by || baseline.partition_by,
-    ttl: plan.ttl || baseline.ttl,
+    ttl: normalizeTtl(plan.ttl, baseline.ttl),
     order_by: repairedOrderBy,
     columns,
     materialized_views: buildMaterializedViewPlans(plan.table_name, columns),
   };
+}
+
+const MIN_TTL_MONTHS = 18;
+
+function normalizeTtl(ttl: string | undefined, fallbackTtl: string) {
+  const months = parseTtlMonths(ttl);
+  return months >= MIN_TTL_MONTHS ? ttl! : fallbackTtl;
+}
+
+function parseTtlMonths(ttl: string | undefined) {
+  const match = ttl?.match(/^timestamp \+ INTERVAL (\d+) MONTH$/);
+  return match ? Number(match[1]) : 0;
 }
 
 function canonicalizeKeyColumns(
