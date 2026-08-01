@@ -50,7 +50,7 @@ brew install clickhouse   # if needed; macOS binary is `clickhouse`, not clickho
 # if Gatekeeper blocks: xattr -dr com.apple.quarantine /opt/homebrew/Caskroom/clickhouse
 
 cd data
-CH='clickhouse client --host <host>.aws.clickhouse.cloud --user default --password <password> --secure' \
+CH='clickhouse client --host <host>.ap-south-1.aws.clickhouse.cloud --user default --password YOUR_PASSWORD --secure' \
 DB=atlys \
 ./load.sh
 ```
