@@ -142,3 +142,6 @@ backend/artifacts/
 
 # ClickHouse-backed context replaces local context registry files
 backend/context/
+
+# Hackathon base dataset (keep local; do not commit)
+data/*.parquet
