@@ -4,7 +4,7 @@ import { ContextBundle } from "../context.js";
 import { callGroqJson } from "../groq.js";
 import { recordPipelineStage } from "../tracking.js";
 import { writeStageJson } from "./artifacts.js";
-import { extractSpecEventOrder, inferMetricHints } from "./eventUtils.js";
+import { extractSpecEventOrder } from "./eventUtils.js";
 import { instrumentationTrackingEvents } from "./trackingEvents.js";
 import { EventProfile, FeatureManifest } from "./types.js";
 
@@ -34,13 +34,7 @@ export async function runSpecParser(input: {
       },
     });
 
-    const parsedManifest =
-      (await buildManifestWithGroq(input)) ??
-      buildFallbackManifest(
-        input.featureSlug,
-        input.specMarkdown,
-        input.eventProfile,
-      );
+    const parsedManifest = await buildManifestWithGroq(input);
     const manifest = repairManifestWithEvidence({
       manifest: parsedManifest,
       featureSlug: input.featureSlug,
@@ -99,7 +93,7 @@ async function buildManifestWithGroq(input: {
   specMarkdown: string;
   eventProfile: EventProfile;
   context: ContextBundle;
-}): Promise<FeatureManifest | null> {
+}): Promise<FeatureManifest> {
   const compactContext = {
     generated_context: input.context.generatedContext,
     instrumentation_notes_excerpt: input.context.instrumentationNotes.slice(
@@ -110,102 +104,66 @@ async function buildManifestWithGroq(input: {
     base_context_excerpt: input.context.baseContext.slice(0, 8000),
   };
 
-  try {
-    return await callGroqJson<FeatureManifest>({
-      messages: [
-        {
-          role: "system",
-          content:
-            "You are an instrumentation agent for ClickHouse analytics. Return only valid JSON. Choose schema-relevant product semantics from the spec and context.",
-        },
-        {
-          role: "user",
-          content: JSON.stringify({
-            task: "Create a feature manifest for schema generation. Use the event profile and Atlys context. Pick the primary entity, workflow type, ordered events, success event, metric hints, and context notes.",
-            allowed_workflow_types: [
-              "funnel",
-              "revenue_addon",
-              "referral_loop",
-              "recovery",
-              "generic",
-            ],
-            required_shape: {
-              feature_slug: "string",
-              feature_name: "string",
-              primary_entity: "string",
-              workflow_type:
-                "funnel | revenue_addon | referral_loop | recovery | generic",
-              event_order: ["event_name"],
-              success_event: "event_name or null",
-              metric_hints: ["metric names/questions"],
-              context_notes: ["short notes"],
-            },
-            feature_slug: input.featureSlug,
-            spec_markdown: input.specMarkdown,
-            event_profile: input.eventProfile,
-            context: compactContext,
-          }),
-        },
-      ],
-      traceName: instrumentationTrackingEvents.specParser.generationName,
-      traceInput: {
-        task: "feature_manifest_for_schema_generation",
-        feature_slug: input.featureSlug,
-        event_names: input.eventProfile.event_order,
-        row_count: input.eventProfile.row_count,
-        field_count: input.eventProfile.fields.length,
-        context_features: input.context.generatedContext.features.length,
-        context_contradictions:
-          input.context.generatedContext.contradictions.length,
+  const manifest = await callGroqJson<FeatureManifest>({
+    messages: [
+      {
+        role: "system",
+        content:
+          "You are an instrumentation agent for ClickHouse analytics. Return only valid JSON. Choose schema-relevant product semantics from the spec and context.",
       },
-    });
-  } catch (error) {
-    console.warn(`Groq manifest generation failed; using fallback: ${error}`);
-    return null;
-  }
-}
-
-function buildFallbackManifest(
-  featureSlug: string,
-  specMarkdown: string,
-  eventProfile: EventProfile,
-): FeatureManifest {
-  const title = specMarkdown.match(/^#\s+(.+)$/m)?.[1]?.trim() ?? featureSlug;
-  const eventOrder = extractSpecEventOrder(
-    specMarkdown,
-    eventProfile.event_order,
-  );
-  const eventText = eventOrder.join(" ");
-  const primaryEntity = eventProfile.fields.some(
-    (field) => field.path === "share_id",
-  )
-    ? "share_id"
-    : eventProfile.fields.some((field) => field.path === "group_id")
-      ? "group_id"
-      : "application_id";
-
-  const workflowType: FeatureManifest["workflow_type"] =
-    eventText.includes("forex") || specMarkdown.toLowerCase().includes("aov")
-      ? "revenue_addon"
-      : eventText.includes("share") || eventText.includes("recipient")
-        ? "referral_loop"
-        : eventText.includes("reminder") || eventText.includes("reconvert")
-          ? "recovery"
-          : "funnel";
-
-  return {
-    feature_slug: featureSlug,
-    feature_name: title.replace(/^Feature spec\s+[—-]\s+/i, ""),
-    primary_entity: primaryEntity,
-    workflow_type: workflowType,
-    event_order: eventOrder,
-    success_event: eventOrder.at(-1) ?? null,
-    metric_hints: inferMetricHints(workflowType, eventOrder),
-    context_notes: [
-      "Generated by deterministic fallback because GROQ_API_KEY was not available or Groq returned no JSON.",
-      "Use existing Atlys envelope fields and avoid all-string schemas.",
+      {
+        role: "user",
+        content: JSON.stringify({
+          task: "Create a feature manifest for schema generation. Use the event profile and Atlys context. Pick the primary entity, workflow type, ordered events, success event, metric hints, and context notes.",
+          allowed_workflow_types: [
+            "funnel",
+            "revenue_addon",
+            "referral_loop",
+            "recovery",
+            "generic",
+          ],
+          required_shape: {
+            feature_slug: "string",
+            feature_name: "string",
+            primary_entity: "string",
+            workflow_type:
+              "funnel | revenue_addon | referral_loop | recovery | generic",
+            event_order: ["event_name"],
+            success_event: "event_name or null",
+            metric_hints: ["metric names/questions"],
+            context_notes: ["short notes"],
+          },
+          feature_slug: input.featureSlug,
+          spec_markdown: input.specMarkdown,
+          event_profile: input.eventProfile,
+          context: compactContext,
+        }),
+      },
     ],
-  };
+    traceName: instrumentationTrackingEvents.specParser.generationName,
+    traceInput: {
+      task: "feature_manifest_for_schema_generation",
+      feature_slug: input.featureSlug,
+      event_names: input.eventProfile.event_order,
+      row_count: input.eventProfile.row_count,
+      field_count: input.eventProfile.fields.length,
+      context_features: input.context.generatedContext.features.length,
+      context_contradictions:
+        input.context.generatedContext.contradictions.length,
+    },
+  });
+  if (
+    !manifest.feature_slug ||
+    !manifest.feature_name ||
+    !manifest.primary_entity ||
+    !manifest.workflow_type ||
+    !Array.isArray(manifest.event_order) ||
+    !Array.isArray(manifest.metric_hints) ||
+    !Array.isArray(manifest.context_notes)
+  ) {
+    throw new Error("Groq manifest generation returned an unusable manifest.");
+  }
+  return manifest;
 }
 
 function repairManifestWithEvidence(input: {

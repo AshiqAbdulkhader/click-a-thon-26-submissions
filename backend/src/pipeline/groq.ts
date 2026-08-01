@@ -27,10 +27,10 @@ export async function callGroqJson<T>(input: {
   strictJson?: boolean;
   traceName?: string;
   traceInput?: Record<string, unknown>;
-}): Promise<T | null> {
+}): Promise<T> {
   const apiKey = process.env.GROQ_API_KEY;
   if (!apiKey) {
-    return null;
+    throw new Error("GROQ_API_KEY is required for LLM-backed pipeline stages.");
   }
 
   const model = input.model ?? process.env.GROQ_MODEL ?? "openai/gpt-oss-20b";
@@ -95,9 +95,9 @@ export async function callGroqJson<T>(input: {
       if (!content) {
         generation.update({
           output: { parsed: false, reason: "empty_completion" },
-          level: "WARNING",
+          level: "ERROR",
         });
-        return null;
+        throw new Error("Groq returned an empty completion.");
       }
 
       generation.update({

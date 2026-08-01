@@ -55,49 +55,39 @@ export async function runSchemaDesignLoop(
     relevantContext,
     deterministicIssues: reviewSchemaPlan(schemaPlan, input.eventProfile),
   });
-  if (criticReview) {
-    const criticIssues = [
-      ...(criticReview.issues ?? []),
-      ...(criticReview.rationale ?? []),
-    ];
-    iterations.push({
-      iteration: 1,
-      actor: "schema_critic",
-      summary:
-        criticReview.verdict === "revise"
-          ? "LLM schema critic requested a schema revision."
-          : "LLM schema critic passed the schema plan.",
-      issues: criticIssues,
-    });
+  const criticIssues = [
+    ...(criticReview.issues ?? []),
+    ...(criticReview.rationale ?? []),
+  ];
+  iterations.push({
+    iteration: 1,
+    actor: "schema_critic",
+    summary:
+      criticReview.verdict === "revise"
+        ? "LLM schema critic requested a schema revision."
+        : "LLM schema critic passed the schema plan.",
+    issues: criticIssues,
+  });
 
-    if (criticReview.verdict === "revise") {
-      const revision = await requestSchemaRevisionDraft({
-        ...input,
-        currentPlan: schemaPlan,
-        criticReview,
-        relevantContext,
-      });
-      schemaPlan = normalizeDesignDraft(
-        revision,
-        fallbackPlan,
-        input.eventProfile,
-        input.manifest,
-      );
-      iterations.push({
-        iteration: 2,
-        actor: "schema_designer_revision",
-        summary:
-          "LLM schema designer revised the plan using schema critic feedback.",
-        issues: revision.rationale ?? [],
-      });
-    }
-  } else {
+  if (criticReview.verdict === "revise") {
+    const revision = await requestSchemaRevisionDraft({
+      ...input,
+      currentPlan: schemaPlan,
+      criticReview,
+      relevantContext,
+    });
+    schemaPlan = normalizeDesignDraft(
+      revision,
+      fallbackPlan,
+      input.eventProfile,
+      input.manifest,
+    );
     iterations.push({
-      iteration: 1,
-      actor: "schema_critic",
+      iteration: 2,
+      actor: "schema_designer_revision",
       summary:
-        "LLM schema critic was unavailable; deterministic guardrails remained the critic of record.",
-      issues: [],
+        "LLM schema designer revised the plan using schema critic feedback.",
+      issues: revision.rationale ?? [],
     });
   }
 

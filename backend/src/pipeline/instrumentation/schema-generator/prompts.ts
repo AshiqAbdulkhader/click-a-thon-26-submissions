@@ -116,7 +116,7 @@ export async function requestSchemaCriticReview(input: {
   schemaPlan: SchemaPlan;
   relevantContext: RelevantContextBundle;
   deterministicIssues: string[];
-}): Promise<SchemaCriticDraft | null> {
+}): Promise<SchemaCriticDraft> {
   try {
     const review = await callGroqJson<SchemaCriticDraft>({
       model: process.env.GROQ_CRITIC_MODEL ?? "llama-3.1-8b-instant",
@@ -175,10 +175,7 @@ export async function requestSchemaCriticReview(input: {
       ],
     });
     if (!review || !["pass", "revise"].includes(String(review.verdict))) {
-      console.warn(
-        "Groq schema critic returned no usable verdict; using deterministic guardrails.",
-      );
-      return null;
+      throw new Error("Groq schema critic returned no usable verdict.");
     }
     return {
       ...review,
@@ -187,10 +184,9 @@ export async function requestSchemaCriticReview(input: {
       rationale: asStringArray(review.rationale),
     };
   } catch (error) {
-    console.warn(
-      `Groq schema critic failed; using deterministic guardrails: ${error}`,
+    throw new Error(
+      `Groq schema critic failed; aborting pipeline: ${error instanceof Error ? error.message : String(error)}`,
     );
-    return null;
   }
 }
 

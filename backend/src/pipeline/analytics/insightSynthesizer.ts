@@ -63,6 +63,7 @@ Rules:
       ],
     });
 
+    validateDraft(llmDraft);
     const draft = repairDraft(llmDraft, input.evidencePack);
     await writeStageJson(
       input.artifactRoot,
@@ -90,41 +91,35 @@ Rules:
 }
 
 function repairDraft(
-  draft: InsightDraft | null,
+  draft: InsightDraft,
   evidencePack: EvidencePack,
 ): InsightDraft {
-  if (draft) {
-    return {
-      short_answer:
-        draft.short_answer ||
-        "I could not produce a confident answer from the available evidence.",
-      key_findings: draft.key_findings ?? [],
-      evidence: draft.evidence ?? [],
-      recommended_actions: draft.recommended_actions ?? [],
-      caveats: draft.caveats ?? [],
-    };
-  }
-
   return {
     short_answer:
-      evidencePack.query_results.length === 0
-        ? "I could not answer this from ClickHouse because the planned queries did not return usable evidence."
-        : "I found ClickHouse evidence for the question, but the insight writer was unavailable; review the query results artifact.",
-    key_findings: evidencePack.query_results.map(
-      (result) =>
-        `${result.query_id} returned ${result.row_count} rows for: ${result.purpose}`,
-    ),
-    evidence: evidencePack.query_results.map((result) => ({
-      claim: `${result.query_id} returned ${result.row_count} rows.`,
-      query_id: result.query_id,
-      confidence: result.row_count > 0 ? "medium" : "low",
-    })),
-    recommended_actions: [],
+      draft.short_answer ||
+      "I could not produce a confident answer from the available evidence.",
+    key_findings: draft.key_findings ?? [],
+    evidence: draft.evidence ?? [],
+    recommended_actions: draft.recommended_actions ?? [],
     caveats: [
+      ...(draft.caveats ?? []),
       ...evidencePack.evaluation.evidence_gaps,
       ...evidencePack.evaluation.repair_notes,
     ],
   };
+}
+
+function validateDraft(draft: InsightDraft) {
+  if (
+    !draft ||
+    typeof draft.short_answer !== "string" ||
+    !Array.isArray(draft.key_findings) ||
+    !Array.isArray(draft.evidence) ||
+    !Array.isArray(draft.recommended_actions) ||
+    !Array.isArray(draft.caveats)
+  ) {
+    throw new Error("Groq insight synthesizer returned an unusable draft.");
+  }
 }
 
 export function renderDraftMarkdown(draft: InsightDraft) {

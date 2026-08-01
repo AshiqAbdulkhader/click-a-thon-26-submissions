@@ -77,6 +77,7 @@ If contradictions mention known issues (e.g. K1 iOS OTP), plan a device/os segme
       ],
     });
 
+    validatePlan(llmPlan);
     const plan = repairPlan(llmPlan, input);
     await writeStageJson(
       input.artifactRoot,
@@ -98,7 +99,7 @@ If contradictions mention known issues (e.g. K1 iOS OTP), plan a device/os segme
 }
 
 function repairPlan(
-  plan: AnalysisPlan | null,
+  plan: AnalysisPlan,
   input: {
     question: string;
     intent: QueryIntent;
@@ -106,10 +107,6 @@ function repairPlan(
   },
 ): AnalysisPlan {
   const fallback = fallbackPlan(input);
-  if (!plan) {
-    return fallback;
-  }
-
   const tables = unique(
     [...(plan.tables ?? []), ...fallback.tables]
       .filter(Boolean)
@@ -131,6 +128,9 @@ function repairPlan(
   const queries = (plan.queries ?? [])
     .filter((query) => query.id && query.purpose && query.sql_intent)
     .slice(0, 6);
+  if (queries.length === 0) {
+    throw new Error("Groq analysis planner returned no usable queries.");
+  }
 
   return {
     interpreted_question:
@@ -138,7 +138,7 @@ function repairPlan(
     answer_type: plan.answer_type || fallback.answer_type,
     tables,
     joins,
-    queries: queries.length > 0 ? queries : fallback.queries,
+    queries,
     evidence_standard: {
       needs_comparison:
         plan.evidence_standard?.needs_comparison ??
@@ -153,9 +153,25 @@ function repairPlan(
         plan.evidence_standard?.can_answer_if_empty ??
         fallback.evidence_standard.can_answer_if_empty,
     },
-    assumptions: plan.assumptions ?? fallback.assumptions,
-    risks: plan.risks ?? fallback.risks,
+    assumptions: plan.assumptions,
+    risks: plan.risks,
   };
+}
+
+function validatePlan(plan: AnalysisPlan) {
+  if (
+    !plan ||
+    !plan.interpreted_question ||
+    !plan.answer_type ||
+    !Array.isArray(plan.tables) ||
+    !Array.isArray(plan.joins) ||
+    !Array.isArray(plan.queries) ||
+    !plan.evidence_standard ||
+    !Array.isArray(plan.assumptions) ||
+    !Array.isArray(plan.risks)
+  ) {
+    throw new Error("Groq analysis planner returned an unusable plan.");
+  }
 }
 
 function fallbackPlan(input: {

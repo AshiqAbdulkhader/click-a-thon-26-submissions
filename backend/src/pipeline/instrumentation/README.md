@@ -14,7 +14,7 @@ Instrumentation does:
 - Persist raw spec/event data into Bronze ClickHouse tables.
 - Profile raw events.
 - Parse product semantics into a feature manifest.
-- Run a schema/load feedback loop: LLM full-plan draft, LLM schema critic, LLM revision when needed, deterministic fallback, guardrail review, repair, load validation, and one repair retry when execution fails.
+- Run a schema/load feedback loop: LLM full-plan draft, LLM schema critic, LLM revision when needed, guardrail review, repair, load validation, and one repair retry when execution fails.
 - Generate and review a Silver ClickHouse schema.
 - Define reusable materialized views / aggregations when useful.
 - Create/load the Silver table and materialized views.
@@ -40,10 +40,9 @@ spec folder
   -> 02 Event Profiler
   -> 03 Spec Parser
   -> 04 Schema Generator
-       -> Groq full schema plan draft when available
+       -> Groq full schema plan draft
        -> Groq schema critic review
        -> Groq schema revision when critic requests changes
-       -> deterministic fallback when unavailable or invalid
        -> deterministic guardrail review
        -> deterministic repair when needed
        -> materialized view / aggregation plan
@@ -234,8 +233,9 @@ LLM generation event:
 
 Nature:
 
-- Agentic when Groq is available.
-- Deterministic fallback/repair when Groq fails or produces weak output.
+- Agentic and Groq-backed.
+- Fails closed when Groq is unavailable or returns unusable output.
+- Deterministic repair only adjusts successful LLM output against raw event evidence.
 - This is semantic parsing, not schema execution.
 
 Input:
@@ -249,7 +249,6 @@ What happens:
 - Sends spec, event profile, and compact context to Groq.
 - Uses `openai/gpt-oss-20b` unless `GROQ_MODEL` overrides it.
 - Asks for a strict JSON feature manifest.
-- Falls back to deterministic parsing if Groq fails.
 - Repairs obvious semantic mistakes using event evidence.
 
 Manifest fields:
@@ -318,11 +317,10 @@ Input:
 
 What happens:
 
-- Asks Groq for a full schema plan using the manifest, event profile, and current context when a model is available.
+- Asks Groq for a full schema plan using the manifest, event profile, and current context.
 - Asks a Groq schema critic to review whether the plan answers PM questions, handles context contradictions, and uses ClickHouse well.
 - Sends critic feedback back into a Groq schema revision round when the critic asks for changes.
 - Treats the event profile and spec as source of truth; context is supporting evidence because the base context can be wrong.
-- Falls back to a deterministic evidence-based schema plan when Groq is unavailable or returns invalid JSON.
 - Normalizes the LLM draft: existing raw paths only, allowed pipeline columns only, valid ClickHouse types only, nullable source fields stay nullable, non-nullable `ORDER BY` columns only, and `event_id` retained for safe `ReplacingMergeTree` dedupe.
 - Runs deterministic guardrails over the plan.
 - Repairs missing required columns, unmapped fields, invalid ordering keys, missing timestamp ordering, and unsafe dedupe keys before execution.
@@ -586,7 +584,7 @@ Instrumentation files:
 - `trackingEvents.ts`: single source of truth for instrumentation tracking events.
 - `bronzeIngest.ts`: raw spec/event persistence into Bronze.
 - `eventProfiler.ts`: deterministic event profiling.
-- `specParser.ts`: Groq-backed manifest generation plus deterministic fallback/repair.
+- `specParser.ts`: Groq-backed manifest generation plus deterministic evidence repair.
 - `schemaGenerator.ts`: compatibility export for the schema generator stage.
 - `schema-generator/`: schema design feedback loop, prompts, guardrails, fallback plan, Silver SQL rendering, materialized view plan, and mapping generation.
 - `schemaCritic.ts`: blocking schema review.

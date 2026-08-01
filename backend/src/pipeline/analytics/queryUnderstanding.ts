@@ -51,6 +51,7 @@ Question: ${input.question}`,
       ],
     });
 
+    validateIntent(llmIntent);
     const intent = repairIntent(llmIntent, input.question);
     await writeStageJson(
       input.artifactRoot,
@@ -71,14 +72,8 @@ Question: ${input.question}`,
   });
 }
 
-function repairIntent(
-  intent: QueryIntent | null,
-  question: string,
-): QueryIntent {
+function repairIntent(intent: QueryIntent, question: string): QueryIntent {
   const fallback = deterministicIntent(question);
-  if (!intent) {
-    return fallback;
-  }
 
   return {
     original_question: question,
@@ -107,6 +102,21 @@ function repairIntent(
         : fallback.requested_analyses,
     ambiguity_notes: intent.ambiguity_notes ?? fallback.ambiguity_notes,
   };
+}
+
+function validateIntent(intent: QueryIntent) {
+  if (
+    !intent ||
+    !Array.isArray(intent.feature_hints) ||
+    !Array.isArray(intent.metric_hints) ||
+    !Array.isArray(intent.table_hints) ||
+    !Array.isArray(intent.segment_hints) ||
+    !Array.isArray(intent.time_hints) ||
+    !Array.isArray(intent.requested_analyses) ||
+    !Array.isArray(intent.ambiguity_notes)
+  ) {
+    throw new Error("Groq query understanding returned an unusable intent.");
+  }
 }
 
 function deterministicIntent(question: string): QueryIntent {

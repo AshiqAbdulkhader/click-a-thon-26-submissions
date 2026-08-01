@@ -137,8 +137,11 @@ Rules:
       ],
     });
 
+    if (!Array.isArray(llmQueries.queries)) {
+      throw new Error("Groq SQL generator returned an unusable queries array.");
+    }
     const generated = repairGeneratedQueries(
-      llmQueries?.queries ?? [],
+      llmQueries.queries,
       input.plan,
       catalog.tables,
     );
@@ -229,11 +232,14 @@ function repairGeneratedQueries(
 
   const repaired = plan.queries.map((planned) => {
     const generated = byId.get(planned.id);
-    const rawSql =
-      generated?.sql ?? fallbackSql(planned.sql_intent, primaryTable);
+    if (!generated?.sql?.trim()) {
+      throw new Error(
+        `Groq SQL generator omitted SQL for planned query ${planned.id}.`,
+      );
+    }
     return {
       ...planned,
-      sql: groundSqlTableNames(rawSql, catalogTables),
+      sql: groundSqlTableNames(generated.sql, catalogTables),
     };
   });
 
@@ -249,27 +255,4 @@ function repairGeneratedQueries(
   }
 
   return repaired.filter((query) => query.sql.trim().length > 0);
-}
-
-function fallbackSql(sqlIntent: string, table?: string) {
-  if (!table) {
-    return `
-SELECT database, name AS table_name, total_rows
-FROM system.tables
-WHERE database IN ('silver', 'gold', 'schema_kings')
-ORDER BY database, name
-LIMIT 100`;
-  }
-  if (/event/i.test(sqlIntent) && table.startsWith("silver.")) {
-    return `
-SELECT event_name, count() AS rows
-FROM ${table}
-GROUP BY event_name
-ORDER BY rows DESC
-LIMIT 100`;
-  }
-  return `
-SELECT *
-FROM ${table}
-LIMIT 20`;
 }
