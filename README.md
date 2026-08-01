@@ -5,37 +5,41 @@ Welcome! This repository collects all project submissions for **Click-a-thon 202
 ## How to Submit
 
 1. Review your partner track's **submission guidelines** — each partner has
-  track-specific guidelines for better evaluation, which apply **in addition to**
+   track-specific guidelines for better evaluation, which apply **in addition to**
    the common requirements below:
-  - **Atlys** — [ATLYS_SUBMISSION_GUIDELINES.md](ATLYS_SUBMISSION_GUIDELINES.md)
-  - **SonyLIV** — [SONYLIV_SUBMISSION_GUIDELINES.md](SONYLIV_SUBMISSION_GUIDELINES.md)
+   - **Atlys** — [ATLYS_SUBMISSION_GUIDELINES.md](ATLYS_SUBMISSION_GUIDELINES.md)
+   - **SonyLIV** — [SONYLIV_SUBMISSION_GUIDELINES.md](SONYLIV_SUBMISSION_GUIDELINES.md)
+
    Where a partner's guidelines specify something more specific (e.g. artifacts,
    architecture format, video length), the partner track's guidelines take precedence.
 2. **Fork** this repository.
 3. Create a folder at the root of the repo, named after your **team** — your team name
-  is your unique identifier across all tracks:  
-    
-     ```
-     your-team-name/
-     ```
+   is your unique identifier across all tracks:
+
+   ```
+   your-team-name/
+   ```
+
 4. Inside your folder, the following are **mandatory for all submissions**, regardless
-  of track:
-  - **Project source code**
-  - `**README.md**` — must include a **hosted demo link**, and the demo itself must
-  cover the details required by your track's submission guidelines
-  ([Atlys](ATLYS_SUBMISSION_GUIDELINES.md) ·
-  [SonyLIV](SONYLIV_SUBMISSION_GUIDELINES.md)) — see the template below
-  - **Architecture** — Atlys teams follow the architecture section in their
-  [track guidelines](ATLYS_SUBMISSION_GUIDELINES.md); other tracks may cover it
-  within the `README.md` or as separate screenshots/diagrams
-  - **Demo video** — a recorded video, 2–3 minutes
-  - **Pitch deck in PDF format** — e.g. `pitch-deck.pdf`
+   of track:
+   - **Project source code** (**mandatory**)
+   - **`README.md`** (**mandatory**) — must include a **hosted demo link**, and the demo
+     itself must cover the details required by your track's submission guidelines
+     ([Atlys](ATLYS_SUBMISSION_GUIDELINES.md) ·
+     [SonyLIV](SONYLIV_SUBMISSION_GUIDELINES.md)) — see the
+     [template below](#submission-readme-template)
+   - **Architecture** (**mandatory**) — Atlys teams follow the architecture section in
+     their [track guidelines](ATLYS_SUBMISSION_GUIDELINES.md); other tracks may cover
+     it within the `README.md` or as separate screenshots/diagrams
+   - **Demo video** (**mandatory**) — a recorded video, 2–3 minutes
+   - **Pitch deck in PDF format** (**mandatory**) — e.g. `pitch-deck.pdf`
 5. Add anything else your track's guidelines require (artifacts, traces, probe
-  outputs, etc.).
+   outputs, etc.).
 6. Open a **pull request** against this repository with the title:
-  ```
+
+   ```
    [Submission] Your Team Name
-  ```
+   ```
 
 ## Submission README Template
 
