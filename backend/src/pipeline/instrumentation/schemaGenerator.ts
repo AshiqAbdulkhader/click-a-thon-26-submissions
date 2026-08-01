@@ -1,6 +1,6 @@
 import path from "node:path";
 import { startActiveObservation } from "@langfuse/tracing";
-import { ContextBundle } from "../context.js";
+import { ContextBundle, retrieveRelevantContextForSpec } from "../context.js";
 import { callGroqJson } from "../groq.js";
 import { recordPipelineStage } from "../tracking.js";
 import { writeStageJson, writeStageText } from "./artifacts.js";
@@ -255,6 +255,16 @@ async function requestSchemaDesignDraft(input: {
   eventProfile: EventProfile;
   context: ContextBundle;
 }): Promise<SchemaDesignDraft | null> {
+  const relevantContext = retrieveRelevantContextForSpec({
+    context: input.context,
+    featureSlug: input.featureSlug,
+    workflowType: input.manifest.workflow_type,
+    primaryEntity: input.manifest.primary_entity,
+    eventNames: input.manifest.event_order,
+    fieldPaths: input.eventProfile.fields.map((field) => field.path),
+    metricHints: input.manifest.metric_hints,
+  });
+
   try {
     const draft = await callGroqJson<SchemaDesignDraft>({
       strictJson: false,
@@ -267,6 +277,10 @@ async function requestSchemaDesignDraft(input: {
         workflow_type: input.manifest.workflow_type,
         field_count: input.eventProfile.fields.length,
         context_features: input.context.generatedContext.features.length,
+        retrieved_workflows: relevantContext.similar_workflows.length,
+        retrieved_columns: relevantContext.column_type_precedents.length,
+        retrieved_metrics: relevantContext.reusable_metrics.length,
+        retrieved_joins: relevantContext.recommended_joins.length,
       },
       messages: [
         {
@@ -325,9 +339,7 @@ async function requestSchemaDesignDraft(input: {
             ],
             feature_manifest: input.manifest,
             event_profile: input.eventProfile,
-            generated_context: input.context.generatedContext,
-            known_context_contradictions:
-              input.context.generatedContext.contradictions,
+            relevant_context: relevantContext,
             base_context_excerpt: input.context.baseContext.slice(0, 6000),
           }),
         },
