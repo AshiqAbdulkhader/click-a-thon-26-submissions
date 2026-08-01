@@ -56,6 +56,7 @@ export async function runSilverLoader(input: {
       .map((row) => JSON.stringify(row))
       .join("\n");
 
+    await recreateGeneratedTables(input.schemaPlan);
     await executeClickHouse(input.schemaSql);
     for (const view of input.schemaPlan.materialized_views) {
       await executeClickHouse(view.target_table_sql);
@@ -139,6 +140,34 @@ ${jsonEachRow}
 
     return report;
   });
+}
+
+async function recreateGeneratedTables(schemaPlan: SchemaPlan) {
+  for (const view of schemaPlan.materialized_views) {
+    await executeClickHouse(`DROP VIEW IF EXISTS ${qualifiedName(view.name)}`);
+  }
+
+  for (const view of schemaPlan.materialized_views) {
+    await executeClickHouse(
+      `DROP TABLE IF EXISTS ${qualifiedName(view.target_table)}`,
+    );
+  }
+
+  await executeClickHouse(
+    `DROP TABLE IF EXISTS ${qualifiedName(`silver.${schemaPlan.table_name}`)}`,
+  );
+}
+
+function qualifiedName(name: string) {
+  const parts = name.split(".");
+  if (
+    parts.length === 0 ||
+    parts.length > 2 ||
+    parts.some((part) => !/^[a-zA-Z_][a-zA-Z0-9_]*$/.test(part))
+  ) {
+    throw new Error(`Unsafe ClickHouse identifier: ${name}`);
+  }
+  return parts.join(".");
 }
 
 function normalizeEventForInsert(input: {
