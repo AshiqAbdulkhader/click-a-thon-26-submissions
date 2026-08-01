@@ -60,7 +60,13 @@ export const instrumentationTrackingEvents = {
     sourceLayer: "manifest",
     targetLayer: "silver_schema",
     clickHouseWrites: [],
-    artifactFiles: ["schema_plan.json", "schema.sql", "mapping.json"],
+    artifactFiles: [
+      "schema_design_loop.json",
+      "schema_plan.json",
+      "schema.sql",
+      "materialized_views.sql",
+      "mapping.json",
+    ],
     trackedInputs: [
       "feature_slug",
       "workflow_type",
@@ -74,7 +80,8 @@ export const instrumentationTrackingEvents = {
       "order_by",
       "column_count",
     ],
-    description: "Generate the silver schema and raw-to-silver mapping plan.",
+    description:
+      "Run the schema design loop, then emit the silver schema, materialized view plan, and raw-to-silver mapping.",
   },
   schemaCritic: {
     observationName: "05_schema_critic",
@@ -88,7 +95,7 @@ export const instrumentationTrackingEvents = {
     trackedInputs: ["table", "order_by", "column_count"],
     trackedOutputs: ["verdict"],
     description:
-      "Review generated schema quality before executing it in ClickHouse.",
+      "Review generated schema quality and block execution when guardrails still fail.",
   },
   silverLoader: {
     observationName: "06_silver_loader",

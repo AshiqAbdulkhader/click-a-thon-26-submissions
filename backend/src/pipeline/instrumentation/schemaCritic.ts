@@ -38,16 +38,16 @@ export async function runSchemaCritic(input: {
       input.artifactRoot,
       stage.stageId,
       "schema_review.md",
-      schemaReview,
+      schemaReview.reviewText,
     );
 
-    const verdict = schemaReview.includes("Pass for v0")
-      ? "pass"
-      : "needs_attention";
+    const verdict =
+      schemaReview.warnings.length === 0 ? "pass" : "needs_attention";
 
     span.update({
       output: {
         verdict,
+        warnings: schemaReview.warnings,
         artifact: path.join(
           input.artifactRoot,
           stage.stageId,
@@ -69,6 +69,7 @@ export async function runSchemaCritic(input: {
       },
       stageOutput: {
         verdict,
+        warnings: schemaReview.warnings,
       },
     });
 
@@ -80,7 +81,7 @@ function reviewSchema(
   schemaPlan: SchemaPlan,
   eventProfile: EventProfile,
   manifest: FeatureManifest,
-): string {
+): { reviewText: string; warnings: string[] } {
   const columnNames = new Set(schemaPlan.columns.map((column) => column.name));
   const warnings: string[] = [];
 
@@ -93,6 +94,11 @@ function reviewSchema(
   if (!schemaPlan.order_by.includes("timestamp")) {
     warnings.push(
       "ORDER BY should include timestamp for time-window analytics.",
+    );
+  }
+  if (!schemaPlan.order_by.includes("event_id")) {
+    warnings.push(
+      "ORDER BY should include event_id so ReplacingMergeTree does not collapse distinct events.",
     );
   }
 
@@ -118,7 +124,13 @@ function reviewSchema(
     }
   }
 
-  return `# Schema Review
+  if (schemaPlan.materialized_views.length === 0) {
+    warnings.push(
+      "No materialized view or reusable aggregation was defined for the feature.",
+    );
+  }
+
+  const reviewText = `# Schema Review
 
 ## Verdict
 
@@ -141,5 +153,8 @@ ${warnings.length === 0 ? "- No blocking issues found." : warnings.map((warning)
 - Raw payload is preserved in \`raw_json\` for replay and hidden-spec debugging.
 - \`${schemaPlan.engine}\` is used so repeated \`event_id\` values can collapse during merges.
 - TTL is set to \`${schemaPlan.ttl}\`; adjust if judges ask for longer retention.
+- Materialized views: ${schemaPlan.materialized_views.length === 0 ? "none" : schemaPlan.materialized_views.map((view) => `\`${view.name}\``).join(", ")}
 `;
+
+  return { reviewText, warnings };
 }

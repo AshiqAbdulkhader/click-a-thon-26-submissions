@@ -43,6 +43,15 @@ export type SchemaPlan = {
     source_path: string | null;
     reason: string;
   }>;
+  materialized_views: Array<{
+    name: string;
+    target_table: string;
+    target_table_sql: string;
+    view_sql: string;
+    purpose: string;
+    dimensions: string[];
+    metrics: string[];
+  }>;
 };
 
 export type MappingPlan = {

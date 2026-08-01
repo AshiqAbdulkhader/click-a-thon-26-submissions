@@ -50,16 +50,23 @@ export async function runInstrumentationAgent(input: {
     featureSlug,
     manifest,
     eventProfile,
+    context: input.context,
     artifactRoot: input.artifactRoot,
   });
 
-  await runSchemaCritic({
+  const schemaReview = await runSchemaCritic({
     jobId: input.jobId,
     schemaPlan,
     eventProfile,
     manifest,
     artifactRoot: input.artifactRoot,
   });
+
+  if (schemaReview.warnings.length > 0) {
+    throw new Error(
+      `Schema critic blocked execution: ${schemaReview.warnings.join("; ")}`,
+    );
+  }
 
   const loadReport = await runSilverLoader({
     jobId: input.jobId,

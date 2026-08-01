@@ -57,6 +57,10 @@ export async function runSilverLoader(input: {
       .join("\n");
 
     await executeClickHouse(input.schemaSql);
+    for (const view of input.schemaPlan.materialized_views) {
+      await executeClickHouse(view.target_table_sql);
+      await executeClickHouse(view.view_sql);
+    }
     await executeClickHouse(`INSERT INTO silver.${input.schemaPlan.table_name}
 (${insertColumns.join(", ")})
 FORMAT JSONEachRow

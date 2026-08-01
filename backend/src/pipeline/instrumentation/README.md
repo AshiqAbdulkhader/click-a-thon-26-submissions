@@ -1,6 +1,6 @@
 # Instrumentation Pipeline
 
-This folder owns only the instrumentation flow: taking one feature spec package, preserving the raw input in Bronze, generating a typed Silver table, loading validated rows, and updating context for the next spec.
+This folder owns only the instrumentation agent flow: taking one feature spec package, preserving the raw input in Bronze, retrieving current context, designing a typed Silver table through a schema feedback loop, loading validated rows, creating reusable aggregation views, and updating context for the next spec.
 
 The public entrypoint is `runInstrumentationAgent` in `orchestrator.ts`. The compatibility export used by the rest of the backend is `backend/src/pipeline/instrumentation.ts`.
 
@@ -12,8 +12,10 @@ Instrumentation does:
 - Persist raw spec/event data into Bronze ClickHouse tables.
 - Profile raw events.
 - Parse product semantics into a feature manifest.
+- Run a schema design feedback loop: draft, optional LLM design suggestion, deterministic guardrail review, repair.
 - Generate and review a Silver ClickHouse schema.
-- Create/load the Silver table.
+- Define reusable materialized views / aggregations when useful.
+- Create/load the Silver table and materialized views.
 - Update context memory only after Silver validation passes.
 - Emit Langfuse observations and `ops.pipeline_stages` records for each step.
 
@@ -36,9 +38,25 @@ spec folder
   -> 02 Event Profiler
   -> 03 Spec Parser
   -> 04 Schema Generator
-  -> 05 Schema Critic
+       -> deterministic draft
+       -> optional Groq schema design suggestion
+       -> deterministic guardrail review
+       -> deterministic repair when needed
+       -> materialized view / aggregation plan
+  -> 05 Schema Critic (blocking gate)
   -> 06 Silver Loader
   -> 07 Context Updater
+```
+
+The important agent loop is:
+
+```text
+observe raw spec/events + retrieve context
+  -> reason about entities, workflow, schema, ordering, TTL, and aggregations
+  -> critique the plan with deterministic guardrails
+  -> repair the plan before execution
+  -> act in ClickHouse
+  -> remember the validated schema in context
 ```
 
 Each stage has a small file and a single main function. Shared types live in `types.ts`. Shared event utilities live in `eventUtils.ts`. Tracking definitions live in `trackingEvents.ts`.
@@ -197,7 +215,7 @@ Output to next step:
 
 Why this matters:
 
-This is the main "agent-like" step. It converts raw product language into structured semantics that drive schema shape and later analytics.
+This is the semantic observation step. It converts raw product language into structured feature semantics that drive the schema design loop and later analytics.
 
 ### 04 Schema Generator
 
@@ -211,15 +229,21 @@ Input:
 
 - feature manifest from Spec Parser
 - event profile from Event Profiler
+- current context bundle from the Context Provider
 
 What happens:
 
-- Builds a `silver.<feature_slug>_events` table plan.
+- Builds a deterministic `silver.<feature_slug>_events` draft table plan from field evidence.
+- Optionally asks Groq for schema strategy suggestions using the manifest, event profile, and current context.
+- Applies only safe suggestions: existing columns only, valid ClickHouse types only, non-nullable `ORDER BY` columns only, and `event_id` retained for safe `ReplacingMergeTree` dedupe.
+- Runs deterministic guardrails over the plan.
+- Repairs missing required columns, unmapped fields, invalid ordering keys, missing timestamp ordering, and unsafe dedupe keys before execution.
 - Adds standard analytical columns such as `job_id`, `event_name`, `event_id`, and `timestamp`.
 - Converts raw event field paths into ClickHouse column names.
 - Infers ClickHouse types.
 - Avoids nullable columns in `ORDER BY`.
 - Preserves raw payload as `raw_json`.
+- Defines a reusable Gold materialized view for daily event and unique-user counts, adding segment dimensions when present.
 - Creates the final `CREATE TABLE` SQL.
 - Creates a mapping plan from raw JSON fields to Silver columns.
 
@@ -229,8 +253,10 @@ ClickHouse writes:
 
 Artifacts:
 
+- `04_schema_generator/schema_design_loop.json`
 - `04_schema_generator/schema_plan.json`
 - `04_schema_generator/schema.sql`
+- `04_schema_generator/materialized_views.sql`
 - `04_schema_generator/mapping.json`
 
 Output to next step:
@@ -241,7 +267,7 @@ Output to next step:
 
 Why this matters:
 
-This stage decides the actual Silver table structure, but keeps execution separate so the schema can be reviewed first.
+This is the core Instrumentation Agent reasoning loop. LLM help is allowed for schema strategy, but deterministic guardrails own correctness before anything touches ClickHouse.
 
 ### 05 Schema Critic
 
@@ -261,9 +287,12 @@ What happens:
 
 - Checks for important analytical columns.
 - Checks whether `ORDER BY` contains `timestamp`.
+- Checks whether `ORDER BY` contains `event_id` to prevent accidental `ReplacingMergeTree` collapse.
 - Checks whether repeated dimensions use `LowCardinality`.
 - Checks nested fields were flattened.
+- Checks that a reusable materialized view / aggregation was defined.
 - Writes a markdown review.
+- Blocks execution when warnings remain.
 
 ClickHouse writes:
 
@@ -275,11 +304,11 @@ Artifact:
 
 Output to next step:
 
-- Review text only. The pipeline currently does not block on warnings.
+- Structured review with markdown text and warnings.
 
 Why this matters:
 
-This is the quality gate before SQL execution. Right now it is advisory; later it can become stricter.
+This is the final quality gate before SQL execution. The schema design loop should repair issues before this point; if it does not, the critic stops the run so bad schemas do not become bad memory.
 
 ### 06 Silver Loader
 
@@ -300,6 +329,7 @@ Input:
 What happens:
 
 - Executes `CREATE TABLE IF NOT EXISTS silver.<feature_slug>_events`.
+- Executes any generated Gold aggregation target tables and materialized views.
 - Normalizes each raw event into the generated schema.
 - Inserts rows with `FORMAT JSONEachRow`.
 - Validates the inserted Silver rows.
@@ -315,6 +345,8 @@ Validation checks:
 ClickHouse writes:
 
 - `silver.<feature_slug>_events`
+- `gold.<feature_slug>_daily_event_counts`
+- `gold.<feature_slug>_daily_event_counts_mv`
 
 Artifact:
 
@@ -375,9 +407,9 @@ Instrumentation files:
 - `bronzeIngest.ts`: raw spec/event persistence into Bronze.
 - `eventProfiler.ts`: deterministic event profiling.
 - `specParser.ts`: Groq-backed manifest generation plus deterministic fallback/repair.
-- `schemaGenerator.ts`: Silver schema and mapping generation.
-- `schemaCritic.ts`: schema review.
-- `silverLoader.ts`: Silver table creation, normalization, insert, validation.
+- `schemaGenerator.ts`: schema design feedback loop, Silver schema, materialized view plan, and mapping generation.
+- `schemaCritic.ts`: blocking schema review.
+- `silverLoader.ts`: Silver table / materialized view creation, normalization, insert, validation.
 - `contextUpdater.ts`: writes validated context memory.
 - `eventUtils.ts`: NDJSON parsing, event profiling helpers, field-name utilities.
 - `artifacts.ts`: writes per-stage local debug artifacts.
@@ -408,6 +440,7 @@ Lineage path:
 specs/<feature>/events.ndjson
   -> bronze.feature_events.raw_json
   -> silver.<feature_slug>_events.raw_json
+  -> gold.<feature_slug>_daily_event_counts
   -> context.feature_registry / context.fact_registry
 ```
 
@@ -447,7 +480,7 @@ WHERE job_id = '<job_id>';
 SELECT stage_id, status, stage_output_json
 FROM ops.pipeline_stages
 WHERE job_id = '<job_id>'
-ORDER BY updated_at;
+ORDER BY recorded_at;
 ```
 
 ```sql
@@ -465,11 +498,13 @@ Current accuracy guarantees:
 - Expected event names must exist in Silver.
 - Missing `event_id` fails validation.
 - Missing success event fails validation when a success event is defined.
+- Schema Critic blocks execution if warnings remain after the design loop.
+- Reusable daily event-count materialized views are created for every generated feature table.
 - Context is updated only after Silver validation passes.
 
 Current limitations:
 
-- Schema Critic is advisory and does not block on warnings.
 - Duplicate collapse relies on `ReplacingMergeTree` behavior and ClickHouse merges.
 - The manifest can use Groq, so deterministic repair exists to correct common feature semantics.
-- Gold analytics are outside this folder and are not implemented by instrumentation.
+- The current materialized view is a reusable instrumentation aggregate, not the full PM-facing Gold analytics layer.
+- Context memory still stores feature-level facts; richer column-level memory belongs in the next Context Agent pass.
