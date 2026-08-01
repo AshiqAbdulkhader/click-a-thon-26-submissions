@@ -22,6 +22,8 @@ export async function callGroqJson<T>(input: {
   messages: GroqMessage[];
   model?: string;
   temperature?: number;
+  maxTokens?: number;
+  strictJson?: boolean;
   traceName?: string;
   traceInput?: Record<string, unknown>;
 }): Promise<T | null> {
@@ -32,6 +34,7 @@ export async function callGroqJson<T>(input: {
 
   const model = input.model ?? process.env.GROQ_MODEL ?? "openai/gpt-oss-20b";
   const temperature = input.temperature ?? 0.1;
+  const strictJson = input.strictJson ?? true;
 
   return startActiveObservation(
     input.traceName ?? "groq.json_completion",
@@ -46,7 +49,8 @@ export async function callGroqJson<T>(input: {
         model,
         modelParameters: {
           temperature,
-          response_format: "json_object",
+          ...(input.maxTokens ? { max_tokens: input.maxTokens } : {}),
+          response_format: strictJson ? "json_object" : "text",
         },
         metadata: {
           provider: "groq",
@@ -65,7 +69,8 @@ export async function callGroqJson<T>(input: {
             model,
             messages: input.messages,
             temperature,
-            response_format: { type: "json_object" },
+            ...(input.maxTokens ? { max_tokens: input.maxTokens } : {}),
+            ...(strictJson ? { response_format: { type: "json_object" } } : {}),
           }),
         },
       );
@@ -105,8 +110,61 @@ export async function callGroqJson<T>(input: {
         },
       });
 
-      return JSON.parse(content) as T;
+      return parseJsonContent<T>(content);
     },
     { asType: "generation" },
   );
+}
+
+function parseJsonContent<T>(content: string): T {
+  try {
+    return JSON.parse(content) as T;
+  } catch {
+    const extracted = extractFirstJsonObject(content);
+    if (!extracted) {
+      throw new Error("Groq returned content without a parseable JSON object.");
+    }
+    return JSON.parse(extracted) as T;
+  }
+}
+
+function extractFirstJsonObject(content: string): string | null {
+  const start = content.indexOf("{");
+  if (start < 0) {
+    return null;
+  }
+
+  let depth = 0;
+  let inString = false;
+  let escaping = false;
+  for (let index = start; index < content.length; index += 1) {
+    const char = content[index];
+
+    if (escaping) {
+      escaping = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaping = true;
+      continue;
+    }
+    if (char === '"') {
+      inString = !inString;
+      continue;
+    }
+    if (inString) {
+      continue;
+    }
+    if (char === "{") {
+      depth += 1;
+    }
+    if (char === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return content.slice(start, index + 1);
+      }
+    }
+  }
+
+  return null;
 }
