@@ -3,6 +3,7 @@ import path from "node:path";
 import { startActiveObservation } from "@langfuse/tracing";
 import { getClickHouseConfig, queryClickHouseText } from "./clickhouse.js";
 import { bootstrapContext } from "./context.js";
+import { ensurePipelineLayers } from "./layers.js";
 import { recordDataLoad, recordDataLoadTable } from "./tracking.js";
 import { shutdownLangfuse, startLangfuse } from "../tracing/langfuse.js";
 
@@ -55,20 +56,37 @@ export async function runSetup(input: { repoRoot: string }) {
           startedAt,
         });
 
+        const skipBaseLoad = isTruthyEnv(process.env.SETUP_SKIP_BASE_LOAD);
+
         const loadSummary = await startActiveObservation(
           "setup.load_base_tables",
           async (span) => {
             span.update({
               input: {
                 tables: baseTables.map((table) => table.table),
-                loader: "data/load.sh",
+                loader: skipBaseLoad
+                  ? "skipped (SETUP_SKIP_BASE_LOAD)"
+                  : "data/load.sh",
+                skip_base_load: skipBaseLoad,
               },
               metadata: {
                 target_database: getClickHouseConfig().database,
               },
             });
 
-            const loadScriptResult = await runLoadScript(input.repoRoot);
+            const loadScriptResult = skipBaseLoad
+              ? {
+                  stdout:
+                    "Skipped data/load.sh because SETUP_SKIP_BASE_LOAD is set. Validating existing tables only.",
+                  stderr: "",
+                }
+              : await runLoadScript(input.repoRoot);
+
+            if (skipBaseLoad) {
+              console.log(
+                "SETUP_SKIP_BASE_LOAD=1 — skipping data/load.sh (expect base tables already loaded).",
+              );
+            }
 
             const results = [];
             for (const table of baseTables) {
@@ -80,6 +98,15 @@ export async function runSetup(input: { repoRoot: string }) {
                   )
                 ).trim(),
               );
+
+              if (!Number.isFinite(actualRows) || actualRows <= 0) {
+                throw new Error(
+                  `Base table ${table.table} is missing or empty (${actualRows} rows). ` +
+                    (skipBaseLoad
+                      ? "Run data/load.sh against Cloud first, then retry setup."
+                      : "data/load.sh did not leave a usable table."),
+                );
+              }
 
               const result = {
                 table_name: table.table,
@@ -96,6 +123,7 @@ export async function runSetup(input: { repoRoot: string }) {
                 status: "completed",
                 validation: {
                   row_count_positive: actualRows > 0,
+                  load_skipped: skipBaseLoad,
                 },
               });
             }
@@ -109,6 +137,7 @@ export async function runSetup(input: { repoRoot: string }) {
                   0,
                 ),
                 results,
+                skip_base_load: skipBaseLoad,
               },
             });
 
@@ -119,9 +148,28 @@ export async function runSetup(input: { repoRoot: string }) {
                 0,
               ),
               tables: results,
+              skip_base_load: skipBaseLoad,
             };
           },
         );
+
+        await startActiveObservation("setup.pipeline_layers", async (span) => {
+          span.update({
+            input: {
+              source: "infra/clickhouse/init/01_layers.sql",
+            },
+          });
+          await ensurePipelineLayers(input.repoRoot);
+          span.update({
+            output: {
+              databases: ["bronze", "silver", "gold"],
+              status: "ensured",
+            },
+          });
+          console.log(
+            "Pipeline layers ensured: bronze / silver / gold (+ bronze tables).",
+          );
+        });
 
         const contextSummary = await startActiveObservation(
           "setup.context_bootstrap",
@@ -244,10 +292,23 @@ function defaultLoadCommand(repoRoot: string) {
   const url = new URL(config.url);
 
   if (["localhost", "127.0.0.1", "::1"].includes(url.hostname)) {
-    return `docker compose -f ${path.join(repoRoot, "docker-compose.yml")} exec -T clickhouse clickhouse-client --user ${config.user} --password ${config.password}`;
+    return `docker compose -f ${path.join(repoRoot, "docker-compose.yml")} exec -T clickhouse clickhouse-client --user ${config.user} --password ${shellQuote(config.password)}`;
   }
 
+  // Homebrew / modern installs expose `clickhouse client`, not `clickhouse-client`.
   const secure = url.protocol === "https:" ? " --secure" : "";
-  const port = url.port ? ` --port ${url.port}` : "";
-  return `clickhouse-client --host ${url.hostname}${port} --user ${config.user} --password ${config.password}${secure}`;
+  const nativePort =
+    process.env.CLICKHOUSE_NATIVE_PORT ??
+    (url.port === "8443" ? "9440" : url.port || "");
+  const port = nativePort ? ` --port ${nativePort}` : "";
+  return `clickhouse client --host ${url.hostname}${port} --user ${config.user} --password ${shellQuote(config.password)}${secure}`;
+}
+
+function shellQuote(value: string) {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+
+function isTruthyEnv(value: string | undefined) {
+  if (!value) return false;
+  return ["1", "true", "yes", "on"].includes(value.trim().toLowerCase());
 }

@@ -4,6 +4,7 @@ import { startActiveObservation } from "@langfuse/tracing";
 import { loadContextBundle } from "./context.js";
 import { completedInstrumentationStageIds } from "./instrumentation/trackingEvents.js";
 import { runInstrumentationAgent } from "./instrumentation.js";
+import { ensurePipelineLayers } from "./layers.js";
 import { pipelineStages } from "./stages.js";
 import { recordPipelineRun, recordPipelineStage } from "./tracking.js";
 import { shutdownLangfuse, startLangfuse } from "../tracing/langfuse.js";
@@ -53,6 +54,8 @@ export async function runPipeline(input: RunPipelineInput) {
         traceId,
         startedAt,
       });
+
+      await ensurePipelineLayers(repoRoot);
 
       const context = await startActiveObservation(
         "00_context_provider",
