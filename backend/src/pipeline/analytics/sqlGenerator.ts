@@ -68,9 +68,10 @@ export async function runSqlGenerator(input: {
     let llmQueries: { queries: GeneratedSqlQuery[] } | null = null;
     try {
       llmQueries = await callGroqJson<{ queries: GeneratedSqlQuery[] }>({
+        modelRole: "sql",
         traceName: "groq.analytics.sql_generator",
         temperature: 0,
-        maxTokens: 3000,
+        maxTokens: 2200,
         traceInput: {
           question: input.question,
           query_count: input.plan.queries.length,
@@ -140,7 +141,8 @@ Rules:
 - For funnel drop-off, use workflow event order (not alphabetical event_name joins).
 - For conditional unique counts, use uniqExactIf(entity_column, condition).
 - Limit exploratory result sets to at most 100 rows.
-- Prefer gold.* MVs when listed for counts/conversion/segments.
+- Prefer gold.* target tables (not *_mv view names) for counts/conversion/segments when listed. Example: gold.<feature>_events_daily_event_counts, gold.<feature>_events_daily_conversion, gold.<feature>_events_segment_success.
+- Aggregate Gold with sum() because SummingMergeTree targets may need merging of parts.
 - If allowed tables are empty, return {"queries":[]}.`,
           },
         ],

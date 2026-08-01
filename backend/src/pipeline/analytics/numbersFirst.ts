@@ -25,14 +25,16 @@ export function buildNumbersFirstDraft(
       ));
 
   if (unknownFeature) {
-    const known = results
-      .flatMap((result) => result.rows)
-      .map((row) =>
-        row.feature_slug
-          ? `${row.feature_slug} → ${row.table_name ?? ""}`
-          : null,
-      )
-      .filter((value): value is string => Boolean(value));
+    const known = uniqueStrings(
+      results
+        .flatMap((result) => result.rows)
+        .map((row) =>
+          row.feature_slug
+            ? `${row.feature_slug} → ${row.table_name ?? ""}`
+            : null,
+        )
+        .filter((value): value is string => Boolean(value)),
+    );
     return {
       short_answer:
         "That feature does not appear to be instrumented in the current context memory, so I will not invent performance metrics for it.",

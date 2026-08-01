@@ -31,9 +31,10 @@ export async function runInsightSynthesizer(input: {
     let llmDraft: InsightDraft | null = null;
     try {
       llmDraft = await callGroqJson<InsightDraft>({
+        modelRole: "insight",
         traceName: "groq.analytics.insight_synthesizer",
         temperature: 0.2,
-        maxTokens: 2200,
+        maxTokens: 1400,
         traceInput: {
           question: input.evidencePack.question,
           result_count: input.evidencePack.query_results.length,

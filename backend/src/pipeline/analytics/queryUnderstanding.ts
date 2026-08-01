@@ -36,9 +36,10 @@ export async function runQueryUnderstanding(input: {
     let llmIntent: QueryIntent | null = null;
     try {
       llmIntent = await callGroqJson<QueryIntent>({
+        modelRole: "intent",
         traceName: "groq.analytics.query_intent",
         temperature: 0,
-        maxTokens: 1200,
+        maxTokens: 800,
         traceInput: { question: input.question },
         messages: [
           {

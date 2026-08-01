@@ -197,6 +197,24 @@ Join memory now stores explicit edges from each Silver feature table to each bas
 
 Final answers (CLI + `final_answer.md`) include an **Evidence (claim → query → confidence)** section. Confidence is not only a viz concern — judges can read it from artifacts without a UI.
 
+## Model routing (budget)
+
+Uses env roles via `backend/src/pipeline/models.ts`:
+
+| Stage                             | Role                | Default env                                                      |
+| --------------------------------- | ------------------- | ---------------------------------------------------------------- |
+| Intent parse                      | `intent` / fast     | `GROQ_FAST_MODEL` → `GROQ_CRITIC_MODEL` → `llama-3.1-8b-instant` |
+| Analysis plan                     | `plan` / fast       | same cheap model                                                 |
+| SQL generator                     | `sql` / default     | `GROQ_MODEL` → `openai/gpt-oss-20b`                              |
+| Insight prose                     | `insight` / fast    | cheap model (numbers-first backs it up)                          |
+| Schema design / critic / revision | `schema` / `critic` | `GROQ_SCHEMA_MODEL` / `GROQ_CRITIC_MODEL`                        |
+
+Your current setup is a good cost balance: 8b for most JSON stages, 20b only where SQL quality matters.
+
+## Gold-first primitives
+
+When Gold targets exist for a feature (`*_daily_event_counts`, `*_daily_conversion`, `*_segment_success`, `*_latency_by_event`), primitives query those first and skip redundant Silver scans for the same cut.
+
 ## Strict Mode (no invented answers)
 
 Analytics prefers **no reply over a wrong reply**:

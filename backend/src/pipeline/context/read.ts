@@ -6,6 +6,7 @@ import { parseJsonArray } from "./utils.js";
 
 export async function readGeneratedContext(): Promise<GeneratedContextRegistry> {
   await ensureContextTables();
+  // LIMIT 1 BY keeps the newest row per key without nested aggregates.
   const featuresRaw = (
     await queryClickHouseText(`
 SELECT
@@ -16,8 +17,9 @@ SELECT
   success_event,
   metric_hints_json,
   toString(updated_at)
-FROM context.feature_registry FINAL
-ORDER BY feature_slug
+FROM context.feature_registry
+ORDER BY feature_slug ASC, updated_at DESC
+LIMIT 1 BY feature_slug
 FORMAT TabSeparated
 `)
   ).trim();
@@ -26,9 +28,9 @@ FORMAT TabSeparated
     await queryClickHouseText(`
 SELECT id, summary, evidence
 FROM context.contradictions
-FINAL
 WHERE status = 'open'
-ORDER BY id
+ORDER BY id ASC, detected_at DESC
+LIMIT 1 BY id
 FORMAT TabSeparated
 `)
   ).trim();
@@ -42,8 +44,9 @@ SELECT
   source_path,
   semantic_role,
   is_nullable
-FROM context.column_registry FINAL
-ORDER BY table_name, column_name
+FROM context.column_registry
+ORDER BY table_name ASC, column_name ASC, updated_at DESC
+LIMIT 1 BY table_name, column_name
 LIMIT 500
 FORMAT TabSeparated
 `)
@@ -60,8 +63,9 @@ SELECT
   primary_entity,
   primary_entity_column,
   segment_columns_json
-FROM context.workflow_registry FINAL
-ORDER BY updated_at DESC
+FROM context.workflow_registry
+ORDER BY feature_slug ASC, updated_at DESC
+LIMIT 1 BY feature_slug
 LIMIT 50
 FORMAT TabSeparated
 `)
@@ -75,8 +79,9 @@ SELECT
   formula_sql,
   grain,
   segment_columns_json
-FROM context.metric_registry FINAL
-ORDER BY updated_at DESC
+FROM context.metric_registry
+ORDER BY feature_slug ASC, metric_name ASC, updated_at DESC
+LIMIT 1 BY metric_name, feature_slug
 LIMIT 100
 FORMAT TabSeparated
 `)
@@ -91,8 +96,9 @@ SELECT
   right_column,
   grain,
   confidence
-FROM context.join_registry FINAL
-ORDER BY updated_at DESC
+FROM context.join_registry
+ORDER BY left_table ASC, right_table ASC, updated_at DESC
+LIMIT 1 BY left_table, left_column, right_table, right_column
 LIMIT 100
 FORMAT TabSeparated
 `)
@@ -107,8 +113,9 @@ SELECT
   ttl,
   materialized_views_json,
   validation_passed
-FROM context.schema_quality_registry FINAL
-ORDER BY updated_at DESC
+FROM context.schema_quality_registry
+ORDER BY table_name ASC, updated_at DESC
+LIMIT 1 BY table_name
 LIMIT 100
 FORMAT TabSeparated
 `)

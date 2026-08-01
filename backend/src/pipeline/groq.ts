@@ -1,4 +1,5 @@
 import { startActiveObservation } from "@langfuse/tracing";
+import { getGroqModel, GroqModelRole } from "./models.js";
 
 type GroqMessage = {
   role: "system" | "user" | "assistant";
@@ -22,6 +23,8 @@ type GroqChatCompletion = {
 export async function callGroqJson<T>(input: {
   messages: GroqMessage[];
   model?: string;
+  /** Budget routing role — ignored when `model` is set explicitly. */
+  modelRole?: GroqModelRole;
   temperature?: number;
   maxTokens?: number;
   strictJson?: boolean;
@@ -33,7 +36,7 @@ export async function callGroqJson<T>(input: {
     throw new Error("GROQ_API_KEY is required for LLM-backed pipeline stages.");
   }
 
-  const model = input.model ?? process.env.GROQ_MODEL ?? "openai/gpt-oss-20b";
+  const model = input.model ?? getGroqModel(input.modelRole ?? "default");
   const temperature = input.temperature ?? 0.1;
   const strictJson = input.strictJson ?? true;
 

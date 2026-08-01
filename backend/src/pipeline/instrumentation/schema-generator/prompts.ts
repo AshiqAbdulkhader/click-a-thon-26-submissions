@@ -15,7 +15,7 @@ export async function requestSchemaDesignDraft(
 ): Promise<SchemaDesignDraft> {
   try {
     const draft = await callGroqJson<SchemaDesignDraft>({
-      model: process.env.GROQ_SCHEMA_MODEL ?? "llama-3.1-8b-instant",
+      modelRole: "schema",
       strictJson: false,
       temperature: 0,
       maxTokens: 3500,
@@ -119,7 +119,7 @@ export async function requestSchemaCriticReview(input: {
 }): Promise<SchemaCriticDraft> {
   try {
     const review = await callGroqJson<SchemaCriticDraft>({
-      model: process.env.GROQ_CRITIC_MODEL ?? "llama-3.1-8b-instant",
+      modelRole: "critic",
       strictJson: false,
       temperature: 0,
       maxTokens: 5000,
@@ -249,7 +249,7 @@ export async function requestSchemaRevisionDraft(input: {
 }): Promise<SchemaDesignDraft> {
   try {
     const revision = await callGroqJson<SchemaDesignDraft>({
-      model: process.env.GROQ_CRITIC_MODEL ?? "llama-3.1-8b-instant",
+      modelRole: "critic",
       strictJson: false,
       temperature: 0,
       maxTokens: 3500,

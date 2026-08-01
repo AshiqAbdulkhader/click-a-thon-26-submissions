@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { startActiveObservation } from "@langfuse/tracing";
 import { loadContextBundle } from "../context.js";
+import { describeModelRouting } from "../models.js";
 import { recordPipelineRun } from "../tracking.js";
 import { shutdownLangfuse, startLangfuse } from "../../tracing/langfuse.js";
 import { runAnalysisPlanner } from "./analysisPlanner.js";
@@ -52,7 +53,7 @@ export async function runAnalyticsAsk(input: {
           metadata: {
             pipeline: "pm-question-to-clickhouse-insight",
             environment: process.env.NODE_ENV ?? "local",
-            model: process.env.GROQ_MODEL ?? "openai/gpt-oss-20b",
+            model_routing: describeModelRouting(),
             strict_mode: true,
           },
         });

@@ -38,9 +38,10 @@ export async function runAnalysisPlanner(input: {
     let llmPlan: AnalysisPlan | null = null;
     try {
       llmPlan = await callGroqJson<AnalysisPlan>({
+        modelRole: "plan",
         traceName: "groq.analytics.analysis_plan",
         temperature: 0.1,
-        maxTokens: 2200,
+        maxTokens: 1600,
         traceInput: {
           question: input.question,
           context_features: input.context.features.map(
@@ -332,7 +333,7 @@ function fallbackPlan(
             purpose:
               "List instrumented features so we can show the requested feature is missing.",
             sql_intent:
-              "SELECT feature_slug, table_name FROM context.feature_registry FINAL ORDER BY feature_slug",
+              "SELECT feature_slug, table_name FROM context.feature_registry ORDER BY updated_at DESC LIMIT 1 BY feature_slug",
             expected_columns: ["feature_slug", "table_name"],
             priority: "required",
           },

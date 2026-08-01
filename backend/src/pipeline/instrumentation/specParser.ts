@@ -105,6 +105,7 @@ async function buildManifestWithGroq(input: {
   };
 
   const manifest = await callGroqJson<FeatureManifest>({
+    modelRole: "schema",
     messages: [
       {
         role: "system",

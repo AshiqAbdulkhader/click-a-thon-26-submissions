@@ -7,6 +7,7 @@ import {
 } from "../warehouseTables.js";
 import { writeStageJson } from "../instrumentation/artifacts.js";
 import { recordPipelineStage } from "../tracking.js";
+import { goldMvCandidates } from "./tableCatalog.js";
 import { analyticsTrackingEvents } from "./trackingEvents.js";
 import {
   AnalysisPlan,
@@ -22,6 +23,12 @@ type TableShape = {
   workflow?: PmRelevantContext["workflows"][number];
   eventOrder: string[];
   isBaseTable: boolean;
+  goldTables: {
+    dailyEventCounts: string | null;
+    dailyConversion: string | null;
+    segmentSuccess: string | null;
+    latency: string | null;
+  };
 };
 
 export async function runAnalyticsPrimitives(input: {
@@ -86,13 +93,16 @@ function buildPrimitiveQueries(input: {
       id: "primitive_list_instrumented_features",
       purpose: "List instrumented features currently in context memory.",
       sql_intent:
-        "SELECT feature_slug, table_name FROM context.feature_registry FINAL",
+        "SELECT feature_slug, table_name FROM context.feature_registry FINAL GROUP BY feature_slug",
       expected_columns: ["feature_slug", "table_name"],
       priority: "required",
       sql: `
-SELECT feature_slug, table_name
-FROM context.feature_registry FINAL
-ORDER BY feature_slug
+SELECT
+  feature_slug,
+  table_name
+FROM context.feature_registry
+ORDER BY feature_slug ASC, updated_at DESC
+LIMIT 1 BY feature_slug
 LIMIT 100`,
     });
     return queries;
@@ -115,7 +125,11 @@ LIMIT 100`,
       continue;
     }
 
-    if (hasCoreEventColumns(shape)) {
+    const gold = goldPrimitivesForShape(shape, requested);
+    queries.push(...gold.queries);
+
+    // Prefer Gold MVs when present; keep a thin Silver fallback for DQ / ordered funnel.
+    if (hasCoreEventColumns(shape) && !gold.covered.has("overview")) {
       queries.push(eventOverview(shape));
     }
     if (hasCoreEventColumns(shape) && hasEntity(shape)) {
@@ -126,7 +140,7 @@ LIMIT 100`,
       requested.has("root_cause") ||
       requested.has("open_ended")
     ) {
-      if (hasCoreEventColumns(shape)) {
+      if (hasCoreEventColumns(shape) && !gold.covered.has("trend")) {
         queries.push(trendScan(shape));
         queries.push(anomalyScan(shape));
       }
@@ -138,11 +152,17 @@ LIMIT 100`,
       requested.has("metric_lookup")
     ) {
       if (hasCoreEventColumns(shape) && hasEntity(shape)) {
-        queries.push(funnelBreakdown(shape));
+        if (!gold.covered.has("funnel")) {
+          queries.push(funnelBreakdown(shape));
+        }
         if (shape.eventOrder.length >= 2) {
           queries.push(orderedFunnelDropoff(shape));
         }
-        if (shape.workflow?.start_event && shape.workflow?.success_event) {
+        if (
+          shape.workflow?.start_event &&
+          shape.workflow?.success_event &&
+          !gold.covered.has("conversion")
+        ) {
           queries.push(conversionRate(shape));
         }
       }
@@ -153,7 +173,12 @@ LIMIT 100`,
       requested.has("open_ended")
     ) {
       const segment = pickSegmentColumn(shape);
-      if (segment && hasCoreEventColumns(shape) && hasEntity(shape)) {
+      if (
+        segment &&
+        hasCoreEventColumns(shape) &&
+        hasEntity(shape) &&
+        !gold.covered.has("segment")
+      ) {
         queries.push(segmentComparison(shape, segment));
       }
     }
@@ -164,11 +189,18 @@ LIMIT 100`,
         "time_on_page",
         "processing_time",
       ]);
-      if (latencyColumn && hasCoreEventColumns(shape)) {
+      if (
+        latencyColumn &&
+        hasCoreEventColumns(shape) &&
+        !gold.covered.has("latency")
+      ) {
         queries.push(latencyDistribution(shape, latencyColumn));
       }
     }
-    if (requested.has("open_ended") || requested.has("root_cause")) {
+    if (
+      (requested.has("open_ended") || requested.has("root_cause")) &&
+      !gold.covered.has("overview")
+    ) {
       const numericPair = pickNumericPair(input.context, shape);
       if (numericPair) {
         queries.push(correlationScan(shape, numericPair[0], numericPair[1]));
@@ -213,7 +245,7 @@ function resolveTableShapes(
   plan: AnalysisPlan,
 ): TableShape[] {
   const tables = unique([
-    ...plan.tables,
+    ...plan.tables.filter((table) => !table.startsWith("gold.")),
     ...context.features.map((feature) => feature.table_name),
     ...context.workflows
       .map((workflow) => workflow.table_name)
@@ -233,55 +265,226 @@ function resolveTableShapes(
     }
   }
 
-  return unique(tables).map((table) => {
-    const qualified = qualifyFeatureTable(table);
-    const bare = bareTableName(qualified);
-    const isBaseTable =
-      (BASE_FUNNEL_TABLES as readonly string[]).includes(bare) ||
-      [
-        "search_typed",
-        "landing_page_scrolled",
-        "auth_completed",
-        "pay_now_clicked",
-      ].includes(bare);
+  return unique(tables)
+    .filter(
+      (table) => !table.startsWith("gold.") && !table.startsWith("context."),
+    )
+    .map((table) => {
+      const qualified = qualifyFeatureTable(table);
+      const bare = bareTableName(qualified);
+      const isBaseTable =
+        (BASE_FUNNEL_TABLES as readonly string[]).includes(bare) ||
+        [
+          "search_typed",
+          "landing_page_scrolled",
+          "auth_completed",
+          "pay_now_clicked",
+        ].includes(bare);
 
-    const columns = new Set(
-      context.columns
-        .filter(
-          (column) =>
-            column.table_name === qualified ||
-            column.table_name === bare ||
-            bareTableName(column.table_name) === bare,
-        )
-        .map((column) => column.column_name),
-    );
+      const columns = new Set(
+        context.columns
+          .filter(
+            (column) =>
+              column.table_name === qualified ||
+              column.table_name === bare ||
+              bareTableName(column.table_name) === bare,
+          )
+          .map((column) => column.column_name),
+      );
 
-    const feature = context.features.find(
-      (item) =>
-        qualifyFeatureTable(item.table_name) === qualified ||
-        bareTableName(item.table_name) === bare,
-    );
-    const workflow = context.workflows.find(
-      (item) =>
-        item.table_name === qualified ||
-        item.table_name === bare ||
-        bareTableName(item.table_name) === bare,
-    );
-    const eventOrder =
-      feature?.event_names && feature.event_names.length > 0
-        ? feature.event_names
-        : [workflow?.start_event, workflow?.success_event].filter(
-            (value): value is string => Boolean(value),
-          );
+      const feature = context.features.find(
+        (item) =>
+          qualifyFeatureTable(item.table_name) === qualified ||
+          bareTableName(item.table_name) === bare,
+      );
+      const workflow = context.workflows.find(
+        (item) =>
+          item.table_name === qualified ||
+          item.table_name === bare ||
+          bareTableName(item.table_name) === bare,
+      );
+      const eventOrder =
+        feature?.event_names && feature.event_names.length > 0
+          ? feature.event_names
+          : [workflow?.start_event, workflow?.success_event].filter(
+              (value): value is string => Boolean(value),
+            );
 
-    return {
-      table: isBaseTable ? bare : qualified,
-      columns,
-      workflow,
-      eventOrder,
-      isBaseTable,
-    };
-  });
+      // Gold targets from instrumentation naming convention. Prefer ones present
+      // in plan/schema_quality; otherwise still emit candidates (executor will
+      // error only if missing — planner usually injects existing gold tables).
+      // Gold target table names follow instrumentation conventions. Prefer when
+      // plan/schema_quality mentions them; otherwise still use convention for
+      // instrumented silver feature tables (MVs are created with every load).
+      const candidates = isBaseTable ? [] : goldMvCandidates(qualified);
+      const resolveGold = (suffix: string) =>
+        candidates.find((candidate) => candidate.endsWith(suffix)) ?? null;
+
+      return {
+        table: isBaseTable ? bare : qualified,
+        columns,
+        workflow,
+        eventOrder,
+        isBaseTable,
+        goldTables: {
+          dailyEventCounts: resolveGold("_daily_event_counts"),
+          dailyConversion: resolveGold("_daily_conversion"),
+          segmentSuccess: resolveGold("_segment_success"),
+          latency: resolveGold("_latency_by_event"),
+        },
+      };
+    });
+}
+
+function goldPrimitivesForShape(
+  shape: TableShape,
+  requested: Set<string | QueryIntent["requested_analyses"][number]>,
+): { queries: GeneratedSqlQuery[]; covered: Set<string> } {
+  const queries: GeneratedSqlQuery[] = [];
+  const covered = new Set<string>();
+  const gold = shape.goldTables;
+
+  if (gold.dailyEventCounts) {
+    queries.push({
+      id: idFor("primitive_gold_event_overview", gold.dailyEventCounts),
+      purpose: `Gold daily event counts overview from ${gold.dailyEventCounts}.`,
+      sql_intent:
+        "Aggregate events and unique users by event_name from Gold MV target.",
+      expected_columns: ["event_name", "events", "unique_users"],
+      priority: "required",
+      sql: `
+SELECT
+  event_name,
+  sum(events) AS events,
+  sum(unique_users) AS unique_users
+FROM ${gold.dailyEventCounts}
+GROUP BY event_name
+ORDER BY events DESC
+LIMIT 100`,
+    });
+    covered.add("overview");
+
+    if (
+      requested.has("trend") ||
+      requested.has("root_cause") ||
+      requested.has("open_ended")
+    ) {
+      queries.push({
+        id: idFor("primitive_gold_trend", gold.dailyEventCounts),
+        purpose: `Daily trend from Gold ${gold.dailyEventCounts}.`,
+        sql_intent: "Sum events by day and event_name from Gold daily counts.",
+        expected_columns: ["day", "event_name", "events"],
+        priority: "nice_to_have",
+        sql: `
+SELECT
+  event_date AS day,
+  event_name,
+  sum(events) AS events
+FROM ${gold.dailyEventCounts}
+GROUP BY day, event_name
+ORDER BY day DESC, events DESC
+LIMIT 200`,
+      });
+      covered.add("trend");
+    }
+  }
+
+  if (
+    gold.dailyConversion &&
+    (requested.has("funnel") ||
+      requested.has("metric_lookup") ||
+      requested.has("root_cause") ||
+      requested.has("open_ended"))
+  ) {
+    queries.push({
+      id: idFor("primitive_gold_conversion", gold.dailyConversion),
+      purpose: `Feature conversion from Gold ${gold.dailyConversion}.`,
+      sql_intent: "Sum started/success entities and compute conversion rate.",
+      expected_columns: ["started", "succeeded", "conversion_rate"],
+      priority: "required",
+      sql: `
+SELECT
+  sum(started_entities) AS started,
+  sum(success_entities) AS succeeded,
+  if(
+    sum(started_entities) = 0,
+    0,
+    sum(success_entities) / sum(started_entities)
+  ) AS conversion_rate
+FROM ${gold.dailyConversion}`,
+    });
+    queries.push({
+      id: idFor("primitive_gold_conversion_trend", gold.dailyConversion),
+      purpose: `Daily conversion trend from Gold ${gold.dailyConversion}.`,
+      sql_intent: "Daily started/success entities from Gold conversion MV.",
+      expected_columns: ["day", "started", "succeeded", "conversion_rate"],
+      priority: "nice_to_have",
+      sql: `
+SELECT
+  event_date AS day,
+  sum(started_entities) AS started,
+  sum(success_entities) AS succeeded,
+  if(
+    sum(started_entities) = 0,
+    0,
+    sum(success_entities) / sum(started_entities)
+  ) AS conversion_rate
+FROM ${gold.dailyConversion}
+GROUP BY day
+ORDER BY day DESC
+LIMIT 60`,
+    });
+    covered.add("conversion");
+    covered.add("funnel");
+  }
+
+  if (
+    gold.segmentSuccess &&
+    (requested.has("segment_comparison") ||
+      requested.has("root_cause") ||
+      requested.has("open_ended"))
+  ) {
+    queries.push({
+      id: idFor("primitive_gold_segment_success", gold.segmentSuccess),
+      purpose: `Segment success rates from Gold ${gold.segmentSuccess}.`,
+      sql_intent: "Read pre-aggregated segment success entities from Gold.",
+      expected_columns: ["entities", "success_entities", "success_rate"],
+      priority: "required",
+      sql: `
+SELECT
+  *,
+  if(entities = 0, 0, success_entities / entities) AS success_rate
+FROM ${gold.segmentSuccess}
+ORDER BY entities DESC
+LIMIT 100`,
+    });
+    covered.add("segment");
+  }
+
+  if (
+    gold.latency &&
+    (requested.has("latency") || requested.has("open_ended"))
+  ) {
+    queries.push({
+      id: idFor("primitive_gold_latency", gold.latency),
+      purpose: `Latency rollup from Gold ${gold.latency}.`,
+      sql_intent: "Mean latency by event from Gold sum/sum_sq rollup.",
+      expected_columns: ["event_name", "rows", "mean_latency"],
+      priority: "nice_to_have",
+      sql: `
+SELECT
+  event_name,
+  sum(rows) AS rows,
+  if(sum(rows) = 0, 0, sum(latency_sum) / sum(rows)) AS mean_latency
+FROM ${gold.latency}
+GROUP BY event_name
+ORDER BY mean_latency DESC
+LIMIT 100`,
+    });
+    covered.add("latency");
+  }
+
+  return { queries, covered };
 }
 
 function hasCoreEventColumns(shape: TableShape) {
