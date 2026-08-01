@@ -6,6 +6,10 @@ Scalability & Impact 10% · Presentation 5%). The items below are the **evidence
 judges need** to score those criteria for this track. Missing evidence can't be
 scored.
 
+Track problem statement:
+[PROBLEM_STATEMENT.md](https://github.com/sidagarwal04/click-a-thon-2026/blob/main/SonyLiv/PROBLEM_STATEMENT.md)
+— *"Counting the crowd: foreground-only concurrency at streaming scale."*
+
 In addition to the [common submission requirements](README.md#how-to-submit), SonyLIV
 teams must include the following.
 

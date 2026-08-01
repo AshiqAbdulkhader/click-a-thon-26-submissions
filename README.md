@@ -9,6 +9,7 @@ Welcome! This repository collects all project submissions for **Click-a-thon 202
    the common requirements below:
   - **Atlys** — [ATLYS_SUBMISSION_GUIDELINES.md](ATLYS_SUBMISSION_GUIDELINES.md)
   - **SonyLIV** — [SONYLIV_SUBMISSION_GUIDELINES.md](SONYLIV_SUBMISSION_GUIDELINES.md)
+  - **InMobi** — [INMOBI_SUBMISSION_GUIDELINES.md](INMOBI_SUBMISSION_GUIDELINES.md)
    Where a partner's guidelines specify something more specific (e.g. artifacts,
    architecture format, video length), the partner track's guidelines take precedence.
 2. **Fork** this repository.
@@ -17,8 +18,9 @@ Welcome! This repository collects all project submissions for **Click-a-thon 202
 4. Inside your folder, the following are **mandatory for all submissions**, regardless
   of track:
   - **Project source code** (**mandatory**)
-  - `**README.md**` (**mandatory**) — must include a **hosted demo link**, and this demo link itself must cover the details required by your track's submission guidelines ([Atlys](ATLYS_SUBMISSION_GUIDELINES.md) ·
-  [SonyLIV](SONYLIV_SUBMISSION_GUIDELINES.md)) — see the
+  - **`README.md`** (**mandatory**) — must include a **hosted demo link**, and this demo link itself must cover the details required by your track's submission guidelines ([Atlys](ATLYS_SUBMISSION_GUIDELINES.md) ·
+  [SonyLIV](SONYLIV_SUBMISSION_GUIDELINES.md) ·
+  [InMobi](INMOBI_SUBMISSION_GUIDELINES.md)) — see the
   [template below](#submission-readme-template)
   - **Architecture** (**mandatory**) — Atlys teams follow the architecture section in
   their [track guidelines](ATLYS_SUBMISSION_GUIDELINES.md); other tracks may cover
@@ -42,7 +44,7 @@ Your team's `README.md` should cover:
 # Team Name
 
 ## Track
-Atlys / SonyLIV
+Atlys / SonyLIV / InMobi
 
 ## Project
 Your project's name and a one-line tagline.

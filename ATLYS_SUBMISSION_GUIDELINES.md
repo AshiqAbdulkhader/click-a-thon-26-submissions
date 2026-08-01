@@ -6,6 +6,10 @@ Scalability & Impact 10% · Presentation 5%). The items below are the **evidence
 judges need** to score those criteria for this track. Missing evidence can't be
 scored.
 
+Track problem statement:
+[PROBLEM_STATEMENT.md](https://github.com/sidagarwal04/click-a-thon-2026/blob/main/Atlys/PROBLEM_STATEMENT.md)
+— *"From feature spec to insight: agents that instrument, analyze, and explain."*
+
 ## 1. Code + how to run it
 
 The three agents (Instrumentation, Analytics, Context) + tracing + visualization (optional),
