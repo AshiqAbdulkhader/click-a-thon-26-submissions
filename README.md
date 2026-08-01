@@ -2,21 +2,55 @@
 
 Welcome! This repository collects all project submissions for **Click-a-thon 2026**.
 
+## Partner Tracks
+
+Each partner has track-specific submission guidelines for better evaluation. Find your
+track below and follow its guidelines **in addition to** the common requirements in
+this README:
+
+| Track | Guidelines |
+| --- | --- |
+| Atlys | [ATLYS_SUBMISSION_GUIDELINES.md](ATLYS_SUBMISSION_GUIDELINES.md) |
+| SonyLIV | [SONYLIV_SUBMISSION_GUIDELINES.md](SONYLIV_SUBMISSION_GUIDELINES.md) |
+
+Where a partner's guidelines specify something more specific (e.g. artifacts,
+architecture format, video length), the partner track's guidelines take precedence.
+
 ## How to Submit
 
 1. **Fork** this repository.
-2. Create a folder at the root of the repo, named after your **team** — your team name is your unique identifier:
+2. Create a folder at the root of the repo, named after your **team** — your team name
+   is your unique identifier across all tracks:
 
    ```
    your-team-name/
    ```
 
-3. Inside your folder, include:
-   - Your project source code
-   - A `README.md` describing your project (see the template below)
-   - **A pitch deck in PDF format (mandatory)** — e.g. `pitch-deck.pdf`
-   - Any assets, screenshots, or demo links
-4. Open a **pull request** against this repository with the title:
+3. Inside your folder, the following are **mandatory for all submissions**, regardless
+   of track:
+   - **Project source code**
+   - **`README.md`** — must include a **hosted demo link**, and the demo itself must
+     cover the details required by your track's submission guidelines
+     ([Atlys](ATLYS_SUBMISSION_GUIDELINES.md) ·
+     [SonyLIV](SONYLIV_SUBMISSION_GUIDELINES.md)) — see the template below
+   - **Architecture** — Atlys teams follow the architecture section in their
+     [track guidelines](ATLYS_SUBMISSION_GUIDELINES.md); other tracks may cover it
+     within the `README.md` or as separate screenshots/diagrams
+   - **Demo video** — a recorded video, 2–3 minutes
+   - **Pitch deck in PDF format** — e.g. `pitch-deck.pdf`
+
+   ```
+   your-team-name/
+   ├── README.md          # hosted demo link + details per your track's guidelines
+   ├── pitch-deck.pdf
+   ├── demo-video.mp4     # or a link in README.md
+   ├── architecture/      # diagrams/screenshots (or covered within README.md)
+   └── src/               # project source code
+   ```
+
+4. Add anything else your track's guidelines require (artifacts, traces, probe
+   outputs, etc.).
+5. Open a **pull request** against this repository with the title:
 
    ```
    [Submission] Your Team Name
@@ -24,10 +58,13 @@ Welcome! This repository collects all project submissions for **Click-a-thon 202
 
 ## Submission README Template
 
-Your project's `README.md` should cover:
+Your team's `README.md` should cover:
 
 ```markdown
 # Team Name
+
+## Track
+Atlys / SonyLIV
 
 ## Project
 Your project's name and a one-line tagline.
@@ -38,14 +75,22 @@ Your project's name and a one-line tagline.
 ## What it does
 A short description of your project.
 
+## Hosted Demo
+Link to your live, hosted demo (mandatory). The demo must cover the details
+required by your track's submission guidelines.
+
+## Demo Video
+Link to your recorded 2–3 minute demo video (mandatory).
+
+## Architecture
+Diagram and/or explanation of your architecture (Atlys teams: follow your
+track guidelines instead).
+
 ## How we built it
 Tech stack, tools, and anything interesting about the implementation.
 
 ## How to run it
 Step-by-step instructions to run the project locally.
-
-## Demo
-Link to a live demo or video, if available.
 ```
 
 ## Rules
