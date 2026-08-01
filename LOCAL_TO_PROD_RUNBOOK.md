@@ -60,13 +60,18 @@ context bootstrap are both visible in the trace.
 cd /Users/shivamtaneja/projects/clickhouse/schema-kings-clickathon
 docker compose --profile langfuse up -d
 cd backend
-pnpm cli setup:local
+pnpm cli setup
 ```
 
 This command loads the 8 provided Atlys tables, bootstraps ClickHouse-backed
 context memory, records setup status in `ops.data_loads` and
 `ops.data_load_tables`, and emits a Langfuse trace named
 `schema-kings.local-setup`.
+
+Under the hood it invokes the provided `data/load.sh` script, then validates and
+tracks the loaded tables. Because `data/load.sh` is a fresh-service loader, run
+this after `docker compose --profile langfuse down -v` locally or against an
+empty Cloud database.
 
 Verify the 8 base tables:
 
@@ -218,7 +223,7 @@ docker compose --profile langfuse up -d
 #
 # 6. Load base data and bootstrap context in one traced command.
 cd backend
-pnpm cli setup:local
+pnpm cli setup
 
 # 7. Run one pipeline smoke test.
 pnpm exec tsc --noEmit
@@ -381,12 +386,13 @@ Then run the same traced setup command against Cloud:
 
 ```bash
 cd /Users/shivamtaneja/projects/clickhouse/schema-kings-clickathon/backend
-pnpm cli setup:local
+pnpm cli setup
 ```
 
-Despite the command name, it uses `CLICKHOUSE_URL`, `CLICKHOUSE_USER`,
-`CLICKHOUSE_PASSWORD`, and `CLICKHOUSE_DATABASE`, so it can target local
-ClickHouse or ClickHouse Cloud.
+This command uses `CLICKHOUSE_URL`, `CLICKHOUSE_USER`, `CLICKHOUSE_PASSWORD`, and `CLICKHOUSE_DATABASE`, so it targets local ClickHouse or ClickHouse Cloud depending on `backend/.env`.
+
+The command invokes `data/load.sh`; for Cloud, make sure `clickhouse-client` is
+available and the target database is empty/fresh.
 
 Before final demo, run:
 

@@ -1,12 +1,7 @@
-import { readFile } from "node:fs/promises";
+import { spawn } from "node:child_process";
 import path from "node:path";
 import { startActiveObservation } from "@langfuse/tracing";
-import {
-  executeClickHouse,
-  getClickHouseConfig,
-  insertClickHouseFormat,
-  queryClickHouseText,
-} from "./clickhouse.js";
+import { getClickHouseConfig, queryClickHouseText } from "./clickhouse.js";
 import { bootstrapContext } from "./context.js";
 import { recordDataLoad, recordDataLoadTable } from "./tracking.js";
 import { shutdownLangfuse, startLangfuse } from "../tracing/langfuse.js";
@@ -25,7 +20,7 @@ const baseTables = [
   { table: "pay_now_clicked", file: "pay_now_clicked.parquet" },
 ] as const;
 
-export async function runLocalSetup(input: { repoRoot: string }) {
+export async function runSetup(input: { repoRoot: string }) {
   startLangfuse();
 
   const loadId = `base_${new Date()
@@ -66,27 +61,18 @@ export async function runLocalSetup(input: { repoRoot: string }) {
             span.update({
               input: {
                 tables: baseTables.map((table) => table.table),
-                ddl: "data/ddl.sql",
+                loader: "data/load.sh",
               },
               metadata: {
-                target: "schema_kings",
+                target_database: getClickHouseConfig().database,
               },
             });
 
-            await executeClickHouse(
-              `CREATE DATABASE IF NOT EXISTS ${getClickHouseConfig().database}`,
-            );
-            await executeDdlFile(path.join(input.repoRoot, "data", "ddl.sql"));
+            const loadScriptResult = await runLoadScript(input.repoRoot);
 
             const results = [];
             for (const table of baseTables) {
               const sourcePath = path.join(input.repoRoot, "data", table.file);
-              await executeClickHouse(`TRUNCATE TABLE ${table.table}`);
-              const parquet = await readFile(sourcePath);
-              await insertClickHouseFormat({
-                query: `INSERT INTO ${table.table} FORMAT Parquet`,
-                data: parquet,
-              });
               const actualRows = Number(
                 (
                   await queryClickHouseText(
@@ -116,6 +102,7 @@ export async function runLocalSetup(input: { repoRoot: string }) {
 
             span.update({
               output: {
+                loader_stdout: loadScriptResult.stdout.slice(-2000),
                 loaded_tables: results.length,
                 total_rows: results.reduce(
                   (sum, result) => sum + result.actual_rows,
@@ -212,19 +199,55 @@ export async function runLocalSetup(input: { repoRoot: string }) {
   }
 }
 
-async function executeDdlFile(ddlPath: string) {
-  const ddl = await readFile(ddlPath, "utf8");
-  const statements = ddl
-    .split(/;\s*(?:\n|$)/)
-    .map((statement) => statement.trim())
-    .filter(Boolean);
+async function runLoadScript(repoRoot: string) {
+  const dataDir = path.join(repoRoot, "data");
+  const childEnv = {
+    ...process.env,
+    CH: process.env.CH ?? defaultLoadCommand(repoRoot),
+    DB: process.env.CLICKHOUSE_DATABASE ?? "schema_kings",
+  };
 
-  for (const statement of statements) {
-    await executeClickHouse(
-      statement.replace(
-        /\bCREATE\s+TABLE\s+(?!IF\s+NOT\s+EXISTS\s+)/i,
-        "CREATE TABLE IF NOT EXISTS ",
-      ),
-    );
+  return new Promise<{ stdout: string; stderr: string }>((resolve, reject) => {
+    const child = spawn("bash", ["load.sh"], {
+      cwd: dataDir,
+      env: childEnv,
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+
+    let stdout = "";
+    let stderr = "";
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString();
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString();
+    });
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve({ stdout, stderr });
+        return;
+      }
+
+      reject(
+        new Error(
+          `data/load.sh failed with exit code ${code}\nSTDOUT:\n${stdout}\nSTDERR:\n${stderr}`,
+        ),
+      );
+    });
+  });
+}
+
+function defaultLoadCommand(repoRoot: string) {
+  const config = getClickHouseConfig();
+  const url = new URL(config.url);
+
+  if (["localhost", "127.0.0.1", "::1"].includes(url.hostname)) {
+    return `docker compose -f ${path.join(repoRoot, "docker-compose.yml")} exec -T clickhouse clickhouse-client --user ${config.user} --password ${config.password}`;
   }
+
+  const secure = url.protocol === "https:" ? " --secure" : "";
+  const port = url.port ? ` --port ${url.port}` : "";
+  return `clickhouse-client --host ${url.hostname}${port} --user ${config.user} --password ${config.password}${secure}`;
 }
