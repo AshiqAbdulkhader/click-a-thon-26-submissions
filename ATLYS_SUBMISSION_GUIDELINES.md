@@ -6,8 +6,6 @@ Scalability & Impact 10% · Presentation 5%). The items below are the **evidence
 judges need** to score those criteria for this track. Missing evidence can't be
 scored.
 
-Submit **one repo** with a `SUBMISSION.md` at its root that links to everything below.
-
 ## 1. Code + how to run it
 
 The three agents (Instrumentation, Analytics, Context) + tracing + visualization (optional),
@@ -38,7 +36,6 @@ Shared or exported traces for each agent run. **The 6th-spec run's trace is**
 ---
 
 
-
 ## Standard probe set (run these and include the outputs)
 
 So every team's Analytics Agent is exercised the same way, run these four prompts
@@ -50,7 +47,6 @@ system's job.
 2. "Where are we losing conversions, and for which segments (device / geo / destination)?"
 3. "Are there any regressions or trends over the last quarter?"
 4. "Is anything in the base context wrong, stale, or self-contradictory?"
-
 
 
 ## Notes
