@@ -1,62 +1,208 @@
-# Click-a-thon 2026
+# Schema Kings · Click-a-thon 2026 (Atlys)
 
-Problem packages for the **ClickHouse Click-a-thon 2026** — a 24-hour hackathon where every solution is built on [ClickHouse](https://clickhouse.com) as the primary datastore and analytical engine. All data in this repo is **synthetic**.
+**From feature spec to insight:** agents that instrument ClickHouse, keep business context fresh, analyze warehouse data, and explain results for a product audience — fully traced in Langfuse.
 
-## The problems
-
-Pick a track, read its start-here guide, and build.
-
-### [InMobi](InMobi/) — From alert to answer: the automated root-cause analyst
-
-A key business metric jumps or drops. An alert tells you *that* it moved — your system must figure out *why*: detect the deviation, drill down across app, device, geo, and advertiser dimensions to isolate the responsible segment, and produce a plain-language, evidence-backed diagnosis in seconds.
-
-| | |
-|---|---|
-| Start here | [InMobi/README_START_HERE.md](InMobi/README_START_HERE.md) |
-| Problem statement | [InMobi/PROBLEM_STATEMENT.md](InMobi/PROBLEM_STATEMENT.md) |
-| Metric definitions | [InMobi/metrics_glossary.md](InMobi/metrics_glossary.md) |
-| Data | [InMobi/data/](InMobi/data/) — 9M ad events (~5 weeks) + 3 dimension tables |
-
-### [SonyLIV](SonyLiv/) — Counting the crowd: foreground-only concurrency at streaming scale
-
-"How many people are watching right now?" is harder than it looks: an open app is not a watching viewer. Build a concurrency model that counts only truly active playback — excluding paused, backgrounded, and heartbeat-missing periods — and answers minute-grain, filtered dashboard queries instantly at very large scale.
-
-| | |
-|---|---|
-| Start here | [SonyLiv/README_START_HERE.md](SonyLiv/README_START_HERE.md) |
-| Problem statement | [SonyLiv/PROBLEM_STATEMENT.md](SonyLiv/PROBLEM_STATEMENT.md) |
-| Data dictionary | [SonyLiv/dataset_details.md](SonyLiv/dataset_details.md) |
-| Data | [SonyLiv/data/](SonyLiv/data/) — ~905K streaming events + ~33K content titles |
-
-### [Atlys](Atlys/) — From feature spec to insight: agents that instrument, analyze, and explain
-
-Every new product feature needs instrumentation, schema design, and analysis — today that loop is manual and slow. Build a system of three agents on ClickHouse that collapses it: one turns a feature spec into production-ready table schemas, one analyzes the data and writes insights a product manager would act on, and one keeps the business context layer fresh as tables are added — all fully traced.
-
-| | |
-|---|---|
-| Start here | [Atlys/README_START_HERE.md](Atlys/README_START_HERE.md) |
-| Problem statement | [Atlys/PROBLEM_STATEMENT.md](Atlys/PROBLEM_STATEMENT.md) |
-| Base context | [Atlys/base_context.md](Atlys/base_context.md) |
-| Data | [Atlys/data/](Atlys/data/) — 8 raw event tables (4-step conversion funnel + 4 supporting), ~2.5M rows |
-| Feature specs | [Atlys/specs/](Atlys/specs/) — 5 specs (1-page brief + raw NDJSON) |
-
-## Ground rules (both tracks)
-
-- **ClickHouse is the primary datastore and analytical engine.** Load the data into your team's own ClickHouse Cloud service, provisioned with your event credits.
-- **Meaningfully integrate at least one of** [ClickStack](https://clickhouse.com/use-cases/observability) (observability), [Langfuse](https://langfuse.com) (LLM observability & analytics), or [LibreChat](https://www.librechat.ai) (conversational interface). Superficial inclusion won't count.
-- **Build for the unseen data.** A sealed evaluation dataset for each track is released to all teams simultaneously in the final hours of the hackathon. Your submission must include your system's output on it, with evidence it ran through your pipeline.
-
-## Getting the data
-
-Large data files are stored with [Git LFS](https://git-lfs.com). To clone with the real files instead of pointer stubs:
-
-```bash
-git lfs install
-git clone https://github.com/sidagarwal04/click-a-thon-2026.git
-```
-
-Already cloned without LFS? Run `git lfs install && git lfs pull` inside the repo.
+All dataset content is **synthetic**. No real customer data or PII.
 
 ---
 
-Good luck — build something extraordinary.
+## Problem we solve
+
+Atlys ships product constantly. Every feature needs instrumentation, schema design, and analysis. Today that loop is slow and context gets lost across handoffs.
+
+This project collapses it into one agentic pipeline on ClickHouse:
+
+1. **Instrument** a feature spec → production-ready Silver tables + Gold MVs
+2. **Remember** validated facts in a living context layer
+3. **Answer** PM questions with warehouse-backed insights + confidence
+4. **Trace** every agent/LLM step in Langfuse and show a judge-facing report
+
+Official brief: [`PROBLEM_STATEMENT.md`](PROBLEM_STATEMENT.md) · package guide: [`README_START_HERE.md`](README_START_HERE.md)
+
+---
+
+## What’s covered (vs the problem statement)
+
+| Deliverable               | Status | How                                                                                                           |
+| ------------------------- | ------ | ------------------------------------------------------------------------------------------------------------- |
+| **Instrumentation Agent** | Done   | Spec → Bronze → profile → LLM schema design/critic → guardrails → Silver load → Gold MVs                      |
+| **Analytics Agent**       | Done   | `cli ask` / report UI → intent → plan → SQL → primitives → execute → numbers-first insights + evidence critic |
+| **Context Agent**         | Done   | ClickHouse `context.*` registries; write only after Silver validation; contradictions/gaps surfaced           |
+| **Langfuse tracing**      | Done   | Full pipeline + ask traces; report deep-links by project + trace id                                           |
+| **Visualization**         | Done   | Static report + `cli serve` UI: schema over time, insights + confidence, context changelog                    |
+| **Unseen 6th spec**       | Ready  | Same `cli run` / `cli ask` path; submit schema + insight + matching Langfuse trace                            |
+
+Out of scope (per brief): auth, polished multi-user product, streaming ingest.
+
+---
+
+## Architecture
+
+```text
+Feature spec (spec.md + events.ndjson)
+        │
+        ▼
+┌───────────────────────┐
+│ Instrumentation Agent │  bronze → schema loop → silver → gold MVs
+└───────────┬───────────┘
+            │ validated only
+            ▼
+┌───────────────────────┐
+│   Context memory      │  feature / column / metric / join / contradictions
+│   (ClickHouse)        │
+└───────────┬───────────┘
+            │
+            ▼
+┌───────────────────────┐
+│   Analytics Agent     │  PM question → SQL in CH → PM insight + confidence
+└───────────┬───────────┘
+            │
+            ├──────────► Langfuse (reasoning chain)
+            ├──────────► ops.* (runs / stages / queries)
+            └──────────► artifacts/<job_id>/ + report HTML
+```
+
+**Hybrid trust model:** LLMs draft intent, plans, SQL, and prose. Deterministic code retrieves context, blocks mutating SQL, executes ClickHouse, validates loads, and strips unsupported claims.
+
+### Layers in ClickHouse
+
+| Layer                             | Role                                    |
+| --------------------------------- | --------------------------------------- |
+| App DB (`schema_kings` / `atlys`) | 8 base Atlys event tables               |
+| `bronze`                          | Raw spec + NDJSON audit copy            |
+| `silver`                          | Typed feature event tables              |
+| `gold`                            | Daily counts / conversion / segment MVs |
+| `context`                         | Living business + schema memory         |
+| `ops`                             | Pipeline run / stage / query tracking   |
+
+---
+
+## Repo layout
+
+```text
+├── PROBLEM_STATEMENT.md      # Official Atlys challenge
+├── README_START_HERE.md      # Dataset package overview
+├── STEPS.md                  # Local + Cloud setup (commands only)
+├── base_context.md           # Business context (treat as fallible)
+├── data/                     # 8 Parquet tables + ddl.sql + load.sh
+├── specs/                    # 5 feature specs (+ 6th when released)
+├── backend/                  # Agents, CLI, report server
+│   ├── src/pipeline/
+│   │   ├── instrumentation/  # Spec → schema → Silver
+│   │   ├── context/          # Context memory read/write
+│   │   ├── analytics/        # PM ask harness
+│   │   └── report/           # HTML report + serve
+│   └── artifacts/            # Per-job outputs (gitignored)
+├── frontend/                 # Generated report (dist/) + README
+└── infra/clickhouse/init/    # bronze/silver/gold DDL (local Docker + Cloud ensure)
+```
+
+Deeper docs:
+
+- [`backend/src/pipeline/instrumentation/README.md`](backend/src/pipeline/instrumentation/README.md)
+- [`backend/src/pipeline/context/README.md`](backend/src/pipeline/context/README.md)
+- [`backend/src/pipeline/analytics/README.md`](backend/src/pipeline/analytics/README.md)
+- [`frontend/README.md`](frontend/README.md)
+
+---
+
+## Quick start
+
+Full command lists (local + Cloud): **[`STEPS.md`](STEPS.md)**
+
+### Local (short)
+
+```bash
+docker compose up -d clickhouse
+docker compose --profile langfuse up -d
+
+cd backend
+cp .env.example .env   # fill GROQ + LANGFUSE_* + LANGFUSE_PROJECT_ID
+pnpm install
+pnpm cli setup
+
+pnpm cli run ../specs/01_express_checkout
+# … remaining specs …
+
+pnpm cli serve         # http://127.0.0.1:8787
+```
+
+### Cloud (short)
+
+1. Point `.env` at ClickHouse Cloud (`CLICKHOUSE_DATABASE=atlys`, `SETUP_SKIP_BASE_LOAD=1`)
+2. Load base tables once with `data/load.sh` (`clickhouse client …`)
+3. `pnpm cli setup` → creates bronze/silver/gold + context
+4. Run the five specs → `pnpm cli serve`
+
+---
+
+## CLI
+
+From `backend/`:
+
+| Command                      | Purpose                                                                                             |
+| ---------------------------- | --------------------------------------------------------------------------------------------------- |
+| `pnpm cli setup`             | Load/validate base tables (or skip with `SETUP_SKIP_BASE_LOAD=1`), ensure layers, bootstrap context |
+| `pnpm cli run <spec-folder>` | Instrumentation agent for one feature                                                               |
+| `pnpm cli ask "…"`           | Analytics agent; also writes focused HTML report                                                    |
+| `pnpm cli report [job_id]`   | Overview or single-job report → `frontend/dist/report.html`                                         |
+| `pnpm cli serve`             | Report UI + ask box (`POST /api/ask`) on port 8787                                                  |
+| `pnpm cli context:bootstrap` | Context bootstrap only                                                                              |
+
+Example asks:
+
+```bash
+pnpm cli ask "Where are users dropping off in the express checkout funnel?"
+pnpm cli ask "Is express checkout completion worse on iOS than Android or web?"
+pnpm cli ask "What tables and events are available for abandoned checkout recovery?"
+```
+
+---
+
+## Visualization & demo flow
+
+1. **Instrument** unseen / known specs with `cli run` (terminal is fine).
+2. Open **http://127.0.0.1:8787** (`cli serve`).
+3. Type a PM question in the **Ask** box (loading stages while the agent runs).
+4. Read answer + findings + confidence; open **Langfuse** for the full chain.
+5. Overview sections show features instrumented, context changelog, recent insights.
+
+Report also works offline via `pnpm cli report` / `pnpm cli report <job_id>`.
+
+---
+
+## Tracing
+
+- Root traces: `schema-kings.pipeline`, `schema-kings.analytics_ask`, `schema-kings.local-setup`
+- Set `LANGFUSE_BASE_URL`, keys, and `LANGFUSE_PROJECT_ID` so report links resolve to:
+
+  `{BASE}/project/{PROJECT_ID}/traces?search={trace_id}&searchType=id&searchType=content`
+
+---
+
+## Design choices (judge talking points)
+
+- **Compute in ClickHouse, interpret in the LLM** — aggregates/primitives first; numbers-first scaffold when prose is weak.
+- **Context is memory, not truth** — event evidence wins; writes gated on Silver validation.
+- **Strict analytics** — prefer “unavailable” / caveats over invented metrics.
+- **Artifacts + ops + Langfuse** — three evidence layers for every job.
+- **Cloud vs local** — same agents; Cloud needs `load.sh` + `SETUP_SKIP_BASE_LOAD` because Docker init isn’t there (layers are ensured in setup/run).
+
+---
+
+## Env essentials
+
+See [`backend/.env.example`](backend/.env.example).
+
+| Variable                                            | Purpose                                            |
+| --------------------------------------------------- | -------------------------------------------------- |
+| `CLICKHOUSE_URL` / `USER` / `PASSWORD` / `DATABASE` | Warehouse                                          |
+| `SETUP_SKIP_BASE_LOAD=1`                            | Cloud: skip re-running `load.sh` after manual load |
+| `GROQ_API_KEY` + model envs                         | LLM stages                                         |
+| `LANGFUSE_*` + `LANGFUSE_PROJECT_ID`                | Tracing + report links                             |
+
+---
+
+## Team
+
+**Schema Kings** — ClickHouse Click-a-thon 2026 · Atlys track.
