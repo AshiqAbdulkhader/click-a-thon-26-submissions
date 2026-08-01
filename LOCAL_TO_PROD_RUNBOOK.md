@@ -158,6 +158,7 @@ Expected output includes:
 
 ```text
 Generated table: silver.<feature>_events
+06_silver_loader: Silver Loader
 Langfuse trace ID: <trace-id>
 ```
 
@@ -167,22 +168,40 @@ Generated artifacts land in:
 backend/artifacts/<job_id>/
 ```
 
-## Next Build Step
+Check that Silver rows landed:
 
-Build this next:
-
-```text
-Silver Loader + Validator
+```bash
+docker compose exec -T clickhouse clickhouse-client \
+  --user schema_kings \
+  --password schema_kings \
+  --query "
+SELECT job_id, count() AS rows, uniqExact(event_name) AS events
+FROM silver.express_checkout_events
+GROUP BY job_id
+ORDER BY job_id
+"
 ```
 
-Required behavior:
+Open the loader report:
 
 ```text
-1. Execute generated schema.sql in ClickHouse.
-2. Normalize events.ndjson into JSONEachRow.
-3. Insert rows into silver.<feature>_events.
-4. Validate row counts, timestamps, event names, primary entity, and nested fields.
-5. Update context only after validation passes.
+backend/artifacts/<job_id>/06_silver_loader/load_report.json
+```
+
+## Current Pipeline Behavior
+
+```text
+1. Reads spec.md and events.ndjson.
+2. Profiles raw events.
+3. Uses Groq to create a feature manifest.
+4. Generates schema.sql and mapping.json.
+5. Reviews schema quality.
+6. Executes schema.sql in ClickHouse.
+7. Normalizes events.ndjson into JSONEachRow.
+8. Inserts rows into silver.<feature>_events.
+9. Validates row count, event names, event IDs, timestamp range, and success event.
+10. Updates context only after validation passes.
+11. Writes a Langfuse trace ID into run_summary.json.
 ```
 
 ## Production / Demo Switch

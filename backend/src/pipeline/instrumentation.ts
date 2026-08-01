@@ -1092,7 +1092,15 @@ function clickHouseTypeForField(
 ): string {
   const types = field.types.filter((type) => type !== "null");
   const nullable = field.null_count > 0 || field.count < totalRows;
-  const wrap = (type: string) => (nullable ? `Nullable(${type})` : type);
+  const wrap = (type: string) => {
+    if (!nullable) {
+      return type;
+    }
+    if (type === "LowCardinality(String)") {
+      return "Nullable(String)";
+    }
+    return `Nullable(${type})`;
+  };
 
   if (field.path.endsWith("_id") || field.path === "id") {
     return wrap("String");

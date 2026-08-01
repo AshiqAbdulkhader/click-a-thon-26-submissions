@@ -1,0 +1,24 @@
+{
+  "feature_slug": "express_checkout",
+  "feature_name": "Express Checkout",
+  "primary_entity": "application_id",
+  "workflow_type": "funnel",
+  "event_order": [
+    "express_checkout_shown",
+    "express_checkout_selected",
+    "saved_method_used",
+    "otp_entered",
+    "express_payment_confirmed"
+  ],
+  "success_event": "express_payment_confirmed",
+  "metric_hints": [
+    "express_checkout_shown_to_express_payment_confirmed_conversion",
+    "step_through_rate",
+    "segment_comparison"
+  ],
+  "context_notes": [
+    "OTP success rate varies by device_type/os/geoip_country_code",
+    "payment.latency_ms measures time from shown to confirmed",
+    "express_checkout adoption higher on mobile devices and for card/upi wallets"
+  ]
+}
