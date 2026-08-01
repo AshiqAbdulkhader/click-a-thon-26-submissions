@@ -146,15 +146,27 @@ Or reuse local Docker only for Langfuse and run the CLI against Cloud CH via `.e
 | Command                      | Purpose                                       |
 | ---------------------------- | --------------------------------------------- |
 | `./run-local.sh`             | **One command** local e2e                     |
+| `./clean-local.sh`           | **Clean** local Docker volumes + artifacts    |
 | `pnpm cli setup`             | Load/validate base tables + bootstrap context |
 | `pnpm cli run <spec-folder>` | Instrumentation agent                         |
 | `pnpm cli ask "…"`           | Analytics agent                               |
 | `pnpm cli report [job_id]`   | Write HTML report from artifacts              |
 | `pnpm cli serve`             | Report UI + `POST /api/ask` on port 8787      |
 
-Fresh local Docker volumes (destructive to local CH/Langfuse data only):
+### Clean local (reset)
+
+Wipes local ClickHouse + Langfuse Docker volumes and regenerated artifacts. Does **not** touch source, specs, Parquet, or `backend/.env`.
 
 ```bash
 cd source_code
-docker compose --profile langfuse down -v
+./clean-local.sh
+# then:
+./run-local.sh
+```
+
+Flags:
+
+```bash
+./clean-local.sh --keep-artifacts   # volumes only
+./clean-local.sh --artifacts-only   # artifacts/dist only, leave Docker running
 ```

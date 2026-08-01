@@ -75,9 +75,17 @@ cd source_code
 ./run-local.sh
 ```
 
-### Prerequisites
+Reset local Docker + artifacts anytime:
 
-Install these before following `RUN.md`:
+```bash
+cd source_code
+./clean-local.sh
+./run-local.sh
+```
+
+### Prerequisites (local)
+
+No host ClickHouse client / `brew install clickhouse` for local — Docker provides ClickHouse.
 
 | Tool                                           | Why                                              | Install                                                                                                                     |
 | ---------------------------------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
@@ -85,18 +93,9 @@ Install these before following `RUN.md`:
 | **Node.js 22+**                                | Backend CLI / report server                      | [nodejs.org](https://nodejs.org/) · macOS also: `brew install node`                                                         |
 | **pnpm**                                       | Package manager for `source_code/backend`        | `npm install -g pnpm` · macOS also: `brew install pnpm`                                                                     |
 | **Groq API key**                               | LLM stages in all three agents                   | [console.groq.com](https://console.groq.com/)                                                                               |
-| **ClickHouse client** (Cloud only)             | One-time `data/load.sh` into ClickHouse Cloud    | **Not the same on every OS** — see below                                                                                    |
-| **Bash / WSL** (Windows)                       | `run-local.sh` and `load.sh` are bash            | [WSL](https://learn.microsoft.com/en-us/windows/wsl/install)                                                                |
+| **Bash / WSL** (Windows)                       | `run-local.sh` is bash                           | [WSL](https://learn.microsoft.com/en-us/windows/wsl/install)                                                                |
 
-**ClickHouse client by OS**
-
-| OS      | Install                                                                                                         |
-| ------- | --------------------------------------------------------------------------------------------------------------- |
-| macOS   | `brew install clickhouse` — binary is `clickhouse` / `clickhouse client`                                        |
-| Linux   | `curl https://clickhouse.com/ \| sh` then `sudo ./clickhouse install`                                           |
-| Windows | No native `brew`. Use **WSL**, then install the Linux client inside WSL. Run `data/load.sh` from that WSL shell |
-
-Local Docker path does **not** need a host ClickHouse client — only Cloud `load.sh` does.
+Cloud Parquet load is separate — see [`RUN.md`](./RUN.md) (host `clickhouse` client only then).
 
 Verify:
 
