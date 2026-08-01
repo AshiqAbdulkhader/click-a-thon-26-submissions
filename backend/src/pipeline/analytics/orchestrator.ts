@@ -7,7 +7,13 @@ import { shutdownLangfuse, startLangfuse } from "../../tracing/langfuse.js";
 import { runAnalysisPlanner } from "./analysisPlanner.js";
 import { retrievePmContext } from "./contextRetriever.js";
 import { runEvidenceCritic } from "./evidenceCritic.js";
+import {
+  isAnalyticsStrictFailure,
+  isLlmInfrastructureError,
+  unavailableAnswer,
+} from "./graceful.js";
 import { runInsightSynthesizer } from "./insightSynthesizer.js";
+import { buildNumbersFirstDraft } from "./numbersFirst.js";
 import { runPlanCritic } from "./planCritic.js";
 import { runAnalyticsPrimitives } from "./primitives.js";
 import { runQueryExecutor } from "./queryExecutor.js";
@@ -47,6 +53,7 @@ export async function runAnalyticsAsk(input: {
             pipeline: "pm-question-to-clickhouse-insight",
             environment: process.env.NODE_ENV ?? "local",
             model: process.env.GROQ_MODEL ?? "openai/gpt-oss-20b",
+            strict_mode: true,
           },
         });
 
@@ -60,160 +67,279 @@ export async function runAnalyticsAsk(input: {
           summary: { question: input.question },
         });
 
-        const context = await loadContextBundle(repoRoot);
-        const intent = await runQueryUnderstanding({
-          jobId,
-          question: input.question,
-          artifactRoot,
-        });
-        const pmContext = await retrievePmContext({
-          jobId,
-          question: input.question,
-          intent,
-          context,
-          artifactRoot,
-        });
-
-        let repairNotes: string[] = [];
-        let evidencePack: EvidencePack | null = null;
-
-        for (let attempt = 1; attempt <= MAX_ANALYTICS_ATTEMPTS; attempt += 1) {
-          const plan = await runAnalysisPlanner({
+        try {
+          const context = await loadContextBundle(repoRoot);
+          const intent = await runQueryUnderstanding({
+            jobId,
+            question: input.question,
+            artifactRoot,
+          });
+          const pmContext = await retrievePmContext({
             jobId,
             question: input.question,
             intent,
-            context: pmContext,
-            artifactRoot,
-            repairNotes,
-          });
-          const planReview = await runPlanCritic({
-            jobId,
-            plan,
-            context: pmContext,
+            context,
             artifactRoot,
           });
-          if (!planReview.passed) {
-            repairNotes = planReview.warnings;
-            if (attempt < MAX_ANALYTICS_ATTEMPTS) {
-              continue;
+
+          let repairNotes: string[] = [];
+          let evidencePack: EvidencePack | null = null;
+
+          for (
+            let attempt = 1;
+            attempt <= MAX_ANALYTICS_ATTEMPTS;
+            attempt += 1
+          ) {
+            const plan = await runAnalysisPlanner({
+              jobId,
+              question: input.question,
+              intent,
+              context: pmContext,
+              artifactRoot,
+              repairNotes,
+            });
+            const planReview = await runPlanCritic({
+              jobId,
+              plan,
+              context: pmContext,
+              artifactRoot,
+            });
+            if (!planReview.passed) {
+              repairNotes = planReview.warnings;
+              if (attempt < MAX_ANALYTICS_ATTEMPTS) {
+                continue;
+              }
+            }
+
+            // LLM SQL may be partial/empty under strict mode; primitives are the backbone.
+            const sqlQueries = await runSqlGenerator({
+              jobId,
+              question: input.question,
+              intent,
+              context: pmContext,
+              plan: planReview.plan,
+              artifactRoot,
+              executionFeedback: repairNotes,
+            });
+            const primitiveQueries = await runAnalyticsPrimitives({
+              jobId,
+              intent,
+              context: pmContext,
+              plan: planReview.plan,
+              artifactRoot,
+            });
+            const merged = mergeQueries(sqlQueries, primitiveQueries);
+            if (merged.length === 0) {
+              throw new Error(
+                "No grounded SQL queries available (LLM omitted SQL and no primitives matched).",
+              );
+            }
+
+            const guardedQueries = await runSqlGuardrail({
+              jobId,
+              queries: merged,
+              artifactRoot,
+            });
+            const executed = await runQueryExecutor({
+              jobId,
+              queries: guardedQueries,
+              artifactRoot,
+            });
+            const evaluation = await runResultEvaluator({
+              jobId,
+              plan: planReview.plan,
+              results: executed.results,
+              executionErrors: executed.errors,
+              artifactRoot,
+            });
+
+            evidencePack = {
+              question: input.question,
+              intent,
+              context: pmContext,
+              plan: planReview.plan,
+              query_results: executed.results,
+              evaluation,
+            };
+
+            // Retry only when we have zero usable rows and repair notes exist.
+            const hasRows = executed.results.some(
+              (result) => result.row_count > 0,
+            );
+            if (
+              hasRows ||
+              !evaluation.needs_repair ||
+              attempt >= MAX_ANALYTICS_ATTEMPTS
+            ) {
+              break;
+            }
+            repairNotes = [
+              ...evaluation.repair_notes,
+              ...evaluation.evidence_gaps,
+              ...guardedQueries.flatMap((query) =>
+                query.guardrail.warnings.map(
+                  (warning) => `${query.id}: ${warning}`,
+                ),
+              ),
+            ];
+          }
+
+          if (!evidencePack) {
+            return await finalizeUnavailable({
+              jobId,
+              featureSlug,
+              question: input.question,
+              artifactRoot,
+              traceId,
+              startedAt,
+              rootSpan,
+              stage: "analytics_loop",
+              reason: "No evidence pack was produced.",
+            });
+          }
+
+          const hasRows = evidencePack.query_results.some(
+            (result) => result.row_count > 0,
+          );
+
+          // Strict: if no warehouse evidence, do not invent an answer.
+          if (
+            !hasRows &&
+            !evidencePack.plan.evidence_standard.can_answer_if_empty
+          ) {
+            return await finalizeUnavailable({
+              jobId,
+              featureSlug,
+              question: input.question,
+              artifactRoot,
+              traceId,
+              startedAt,
+              rootSpan,
+              stage: "09_gold_query_executor",
+              reason:
+                evidencePack.evaluation.evidence_gaps.join("; ") ||
+                "Queries returned no usable rows.",
+            });
+          }
+
+          let draft;
+          try {
+            draft = await runInsightSynthesizer({
+              jobId,
+              evidencePack,
+              artifactRoot,
+            });
+          } catch (error) {
+            if (hasRows) {
+              // Numbers-first from real rows is allowed; fabricated narrative is not.
+              draft = buildNumbersFirstDraft(evidencePack);
+              draft.caveats = [
+                ...draft.caveats,
+                `Insight LLM failed (${error instanceof Error ? error.message : String(error)}); used numbers-first warehouse summary only.`,
+              ];
+            } else {
+              return await finalizeUnavailable({
+                jobId,
+                featureSlug,
+                question: input.question,
+                artifactRoot,
+                traceId,
+                startedAt,
+                rootSpan,
+                stage: "10_insight_synthesizer",
+                reason: error instanceof Error ? error.message : String(error),
+              });
             }
           }
 
-          const sqlQueries = await runSqlGenerator({
+          const finalAnswer = await runEvidenceCritic({
             jobId,
-            question: input.question,
-            intent,
-            context: pmContext,
-            plan: planReview.plan,
+            draft,
+            evidencePack,
             artifactRoot,
-            executionFeedback: repairNotes,
-          });
-          const primitiveQueries = await runAnalyticsPrimitives({
-            jobId,
-            intent,
-            context: pmContext,
-            plan: planReview.plan,
-            artifactRoot,
-          });
-          const guardedQueries = await runSqlGuardrail({
-            jobId,
-            queries: mergeQueries(sqlQueries, primitiveQueries),
-            artifactRoot,
-          });
-          const executed = await runQueryExecutor({
-            jobId,
-            queries: guardedQueries,
-            artifactRoot,
-          });
-          const evaluation = await runResultEvaluator({
-            jobId,
-            plan: planReview.plan,
-            results: executed.results,
-            executionErrors: executed.errors,
-            artifactRoot,
+            traceId,
           });
 
-          evidencePack = {
+          const runSummary = {
+            job_id: jobId,
             question: input.question,
-            intent,
-            context: pmContext,
-            plan: planReview.plan,
-            query_results: executed.results,
-            evaluation,
+            answer: finalAnswer.short_answer,
+            artifact_root: artifactRoot,
+            langfuse_trace_id: traceId,
+            evaluation_passed: evidencePack.evaluation.passed,
+            evidence_queries: evidencePack.query_results.map((result) => ({
+              query_id: result.query_id,
+              row_count: result.row_count,
+            })),
           };
-
-          if (!evaluation.needs_repair || attempt >= MAX_ANALYTICS_ATTEMPTS) {
-            break;
-          }
-          repairNotes = [
-            ...evaluation.repair_notes,
-            ...evaluation.evidence_gaps,
-            ...guardedQueries.flatMap((query) =>
-              query.guardrail.warnings.map(
-                (warning) => `${query.id}: ${warning}`,
-              ),
-            ),
-          ];
-        }
-
-        if (!evidencePack) {
-          throw new Error("Analytics ask loop ended without an evidence pack.");
-        }
-        if (!evidencePack.evaluation.passed) {
-          throw new Error(
-            `Analytics evidence evaluation failed after ${MAX_ANALYTICS_ATTEMPTS} attempt(s): ${[
-              ...evidencePack.evaluation.evidence_gaps,
-              ...evidencePack.evaluation.repair_notes,
-            ].join("; ")}`,
+          await writeFile(
+            path.join(artifactRoot, "ask_summary.json"),
+            `${JSON.stringify(runSummary, null, 2)}\n`,
           );
+          await recordPipelineRun({
+            jobId,
+            featureSlug,
+            specFolder: "ask",
+            status: "completed",
+            traceId,
+            startedAt,
+            completedAt: new Date().toISOString(),
+            summary: runSummary,
+          });
+
+          rootSpan.update({ output: runSummary });
+          return finalAnswer;
+        } catch (error) {
+          // Graceful unavailable for LLM/infra failures — never crash the CLI with a stack for judges.
+          if (
+            isLlmInfrastructureError(error) ||
+            isAnalyticsStrictFailure(error)
+          ) {
+            return await finalizeUnavailable({
+              jobId,
+              featureSlug,
+              question: input.question,
+              artifactRoot,
+              traceId,
+              startedAt,
+              rootSpan,
+              stage: isAnalyticsStrictFailure(error)
+                ? error.stage
+                : "analytics_ask",
+              reason: error instanceof Error ? error.message : String(error),
+            });
+          }
+          throw error;
         }
-
-        const draft = await runInsightSynthesizer({
-          jobId,
-          evidencePack,
-          artifactRoot,
-        });
-        const finalAnswer = await runEvidenceCritic({
-          jobId,
-          draft,
-          evidencePack,
-          artifactRoot,
-          traceId,
-        });
-
-        const runSummary = {
-          job_id: jobId,
-          question: input.question,
-          answer: finalAnswer.short_answer,
-          artifact_root: artifactRoot,
-          langfuse_trace_id: traceId,
-          evidence_queries: evidencePack.query_results.map((result) => ({
-            query_id: result.query_id,
-            row_count: result.row_count,
-          })),
-        };
-        await writeFile(
-          path.join(artifactRoot, "ask_summary.json"),
-          `${JSON.stringify(runSummary, null, 2)}\n`,
-        );
-        await recordPipelineRun({
-          jobId,
-          featureSlug,
-          specFolder: "ask",
-          status: "completed",
-          traceId,
-          startedAt,
-          completedAt: new Date().toISOString(),
-          summary: runSummary,
-        });
-
-        rootSpan.update({ output: runSummary });
-        return finalAnswer;
       },
     );
 
     return answer;
   } catch (error) {
+    // Last-resort graceful response so CLI still prints something usable.
+    const fallback = unavailableAnswer({
+      question: input.question,
+      artifactRoot,
+      traceId,
+      stage: "orchestrator",
+      reason: error instanceof Error ? error.message : String(error),
+    });
+    await writeFile(
+      path.join(artifactRoot, "ask_summary.json"),
+      `${JSON.stringify(
+        {
+          job_id: jobId,
+          question: input.question,
+          status: "unavailable",
+          error: error instanceof Error ? error.message : String(error),
+          answer: fallback.short_answer,
+          artifact_root: artifactRoot,
+          langfuse_trace_id: traceId,
+        },
+        null,
+        2,
+      )}\n`,
+    );
     await recordPipelineRun({
       jobId,
       featureSlug,
@@ -225,12 +351,78 @@ export async function runAnalyticsAsk(input: {
       summary: {
         question: input.question,
         error: error instanceof Error ? error.message : String(error),
+        graceful: true,
       },
     });
-    throw error;
+    return fallback;
   } finally {
     await shutdownLangfuse();
   }
+}
+
+async function finalizeUnavailable(input: {
+  jobId: string;
+  featureSlug: string;
+  question: string;
+  artifactRoot: string;
+  traceId: string;
+  startedAt: string;
+  rootSpan: { update: (value: Record<string, unknown>) => void };
+  stage: string;
+  reason: string;
+}): Promise<FinalAnalyticsAnswer> {
+  const answer = unavailableAnswer({
+    question: input.question,
+    artifactRoot: input.artifactRoot,
+    traceId: input.traceId,
+    stage: input.stage,
+    reason: input.reason,
+  });
+  await writeFile(
+    path.join(input.artifactRoot, "unavailable_answer.json"),
+    `${JSON.stringify(answer, null, 2)}\n`,
+  );
+  await writeFile(
+    path.join(input.artifactRoot, "ask_summary.json"),
+    `${JSON.stringify(
+      {
+        job_id: input.jobId,
+        question: input.question,
+        status: "unavailable",
+        stage: input.stage,
+        reason: input.reason,
+        answer: answer.short_answer,
+        artifact_root: input.artifactRoot,
+        langfuse_trace_id: input.traceId,
+      },
+      null,
+      2,
+    )}\n`,
+  );
+  await recordPipelineRun({
+    jobId: input.jobId,
+    featureSlug: input.featureSlug,
+    specFolder: "ask",
+    status: "failed",
+    traceId: input.traceId,
+    startedAt: input.startedAt,
+    completedAt: new Date().toISOString(),
+    summary: {
+      question: input.question,
+      status: "unavailable",
+      stage: input.stage,
+      reason: input.reason,
+      graceful: true,
+    },
+  });
+  input.rootSpan.update({
+    output: {
+      status: "unavailable",
+      stage: input.stage,
+      reason: input.reason,
+    },
+  });
+  return answer;
 }
 
 function createAskJobId(question: string) {

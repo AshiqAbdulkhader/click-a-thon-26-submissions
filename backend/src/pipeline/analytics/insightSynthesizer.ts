@@ -5,6 +5,8 @@ import {
   writeStageText,
 } from "../instrumentation/artifacts.js";
 import { recordPipelineStage } from "../tracking.js";
+import { AnalyticsStrictFailure } from "./graceful.js";
+import { mergeWithNumbersFirst } from "./numbersFirst.js";
 import { analyticsTrackingEvents } from "./trackingEvents.js";
 import { EvidencePack, InsightDraft } from "./types.js";
 import { compactJson } from "./utils.js";
@@ -24,24 +26,45 @@ export async function runInsightSynthesizer(input: {
       metadata: { agent: "analytics_insight_synthesizer" },
     });
 
-    const llmDraft = await callGroqJson<InsightDraft>({
-      traceName: "groq.analytics.insight_synthesizer",
-      temperature: 0.2,
-      maxTokens: 2200,
-      traceInput: {
-        question: input.evidencePack.question,
-        result_count: input.evidencePack.query_results.length,
-      },
-      messages: [
-        {
-          role: "system",
-          content:
-            "You write PM-facing analytics answers from evidence. Do not invent facts. Return JSON only.",
+    const numbersPreview = compactResultTables(input.evidencePack, 6000);
+
+    let llmDraft: InsightDraft | null = null;
+    try {
+      llmDraft = await callGroqJson<InsightDraft>({
+        traceName: "groq.analytics.insight_synthesizer",
+        temperature: 0.2,
+        maxTokens: 2200,
+        traceInput: {
+          question: input.evidencePack.question,
+          result_count: input.evidencePack.query_results.length,
         },
-        {
-          role: "user",
-          content: `Evidence pack:
-${compactJson(input.evidencePack, 24000)}
+        messages: [
+          {
+            role: "system",
+            content:
+              "You write PM-facing analytics answers from evidence. Do not invent facts. Return JSON only. If numbers are present, you MUST use them.",
+          },
+          {
+            role: "user",
+            content: `Question:
+${input.evidencePack.question}
+
+NUMBERS FIRST (executed ClickHouse rows — treat as ground truth):
+${numbersPreview}
+
+Compact evidence pack (context/plan/evaluation):
+${compactJson(
+  {
+    intent: input.evidencePack.intent,
+    plan: input.evidencePack.plan,
+    evaluation: input.evidencePack.evaluation,
+    contradictions: input.evidencePack.context.contradictions,
+    retrieval_notes: input.evidencePack.context.retrieval_notes,
+    features: input.evidencePack.context.features,
+    metrics: input.evidencePack.context.metrics,
+  },
+  12000,
+)}
 
 Return:
 {
@@ -54,17 +77,41 @@ Return:
 
 Rules:
 - Be useful to a product manager.
-- Say when evidence is weak or missing.
+- NEVER say "cannot be determined" if NUMBERS FIRST contains non-empty rows. Quote those numbers.
 - Do not claim causality unless the evidence directly supports it.
 - Mention query ids for claims.
 - Attach confidence high|medium|low on every evidence claim.
-- If context contradictions mention known issues (e.g. K1 iOS WebKit OTP), link findings to them only when segment evidence supports it.`,
+- Link known issues (e.g. K1 iOS WebKit OTP) only when segment evidence supports it.
+- If there are truly zero rows, say evidence is missing (do not invent).`,
+          },
+        ],
+      });
+    } catch (error) {
+      llmDraft = null;
+      span.update({
+        metadata: {
+          llm_failed: true,
+          error: error instanceof Error ? error.message : String(error),
         },
-      ],
-    });
+      });
+    }
 
-    validateDraft(llmDraft);
-    const draft = repairDraft(llmDraft, input.evidencePack);
+    if (llmDraft && !isValidDraftShape(llmDraft)) {
+      // Don't crash — numbers-first can still answer from rows.
+      llmDraft = null;
+    }
+
+    const hasRows = input.evidencePack.query_results.some(
+      (result) => result.row_count > 0,
+    );
+    if (!llmDraft && !hasRows) {
+      throw new AnalyticsStrictFailure(
+        event.stageId,
+        "Insight synthesizer unavailable and no warehouse rows to summarize.",
+      );
+    }
+
+    const draft = mergeWithNumbersFirst(llmDraft, input.evidencePack);
     await writeStageJson(
       input.artifactRoot,
       event.stageId,
@@ -90,36 +137,28 @@ Rules:
   });
 }
 
-function repairDraft(
-  draft: InsightDraft,
-  evidencePack: EvidencePack,
-): InsightDraft {
-  return {
-    short_answer:
-      draft.short_answer ||
-      "I could not produce a confident answer from the available evidence.",
-    key_findings: draft.key_findings ?? [],
-    evidence: draft.evidence ?? [],
-    recommended_actions: draft.recommended_actions ?? [],
-    caveats: [
-      ...(draft.caveats ?? []),
-      ...evidencePack.evaluation.evidence_gaps,
-      ...evidencePack.evaluation.repair_notes,
-    ],
-  };
+function isValidDraftShape(draft: InsightDraft) {
+  return (
+    Boolean(draft) &&
+    typeof draft.short_answer === "string" &&
+    Array.isArray(draft.key_findings) &&
+    Array.isArray(draft.evidence) &&
+    Array.isArray(draft.recommended_actions) &&
+    Array.isArray(draft.caveats)
+  );
 }
 
-function validateDraft(draft: InsightDraft) {
-  if (
-    !draft ||
-    typeof draft.short_answer !== "string" ||
-    !Array.isArray(draft.key_findings) ||
-    !Array.isArray(draft.evidence) ||
-    !Array.isArray(draft.recommended_actions) ||
-    !Array.isArray(draft.caveats)
-  ) {
-    throw new Error("Groq insight synthesizer returned an unusable draft.");
-  }
+function compactResultTables(evidencePack: EvidencePack, maxLength: number) {
+  const blocks = evidencePack.query_results.map((result) => {
+    const rows = result.rows.slice(0, 12);
+    return {
+      query_id: result.query_id,
+      purpose: result.purpose,
+      row_count: result.row_count,
+      rows,
+    };
+  });
+  return compactJson(blocks, maxLength);
 }
 
 export function renderDraftMarkdown(draft: InsightDraft) {

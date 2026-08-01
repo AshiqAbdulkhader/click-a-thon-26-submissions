@@ -1,10 +1,25 @@
 import { startActiveObservation } from "@langfuse/tracing";
 import { callGroqJson } from "../groq.js";
+import { BASE_EVENT_TABLES } from "../warehouseTables.js";
 import { writeStageJson } from "../instrumentation/artifacts.js";
 import { recordPipelineStage } from "../tracking.js";
+import { AnalyticsStrictFailure } from "./graceful.js";
+import { clampTableHints } from "./tableCatalog.js";
 import { analyticsTrackingEvents } from "./trackingEvents.js";
 import { QueryIntent } from "./types.js";
 import { normalizeTokens, unique } from "./utils.js";
+
+const ALLOWED_ANALYSES = new Set<QueryIntent["requested_analyses"][number]>([
+  "metric_lookup",
+  "trend",
+  "funnel",
+  "root_cause",
+  "segment_comparison",
+  "latency",
+  "data_quality",
+  "schema_explanation",
+  "open_ended",
+]);
 
 export async function runQueryUnderstanding(input: {
   jobId: string;
@@ -18,20 +33,22 @@ export async function runQueryUnderstanding(input: {
       metadata: { agent: "analytics_query_understanding" },
     });
 
-    const llmIntent = await callGroqJson<QueryIntent>({
-      traceName: "groq.analytics.query_intent",
-      temperature: 0,
-      maxTokens: 1200,
-      traceInput: { question: input.question },
-      messages: [
-        {
-          role: "system",
-          content:
-            "You parse product-manager analytics questions. Return strict JSON only. Do not answer the question.",
-        },
-        {
-          role: "user",
-          content: `Parse this PM analytics question into:
+    let llmIntent: QueryIntent | null = null;
+    try {
+      llmIntent = await callGroqJson<QueryIntent>({
+        traceName: "groq.analytics.query_intent",
+        temperature: 0,
+        maxTokens: 1200,
+        traceInput: { question: input.question },
+        messages: [
+          {
+            role: "system",
+            content:
+              "You parse product-manager analytics questions. Return strict JSON only. Do not answer the question. Never invent warehouse table names.",
+          },
+          {
+            role: "user",
+            content: `Parse this PM analytics question into:
 {
   "original_question": string,
   "normalized_question": string,
@@ -46,12 +63,33 @@ export async function runQueryUnderstanding(input: {
 
 Allowed requested_analyses values: metric_lookup, trend, funnel, root_cause, segment_comparison, latency, data_quality, schema_explanation, open_ended.
 
-Question: ${input.question}`,
-        },
-      ],
-    });
+table_hints rules:
+- Only include a table_hint if the question explicitly names a real event/table style identifier.
+- Do NOT invent names like user_sessions, checkout_events, checkout_sessions, logs.
+- Prefer empty table_hints over guesses. Feature names belong in feature_hints, not table_hints.
+- Known base tables if ever named: ${BASE_EVENT_TABLES.join(", ")}.
 
-    validateIntent(llmIntent);
+Question: ${input.question}`,
+          },
+        ],
+      });
+    } catch (error) {
+      llmIntent = null;
+      span.update({
+        metadata: {
+          llm_failed: true,
+          error: error instanceof Error ? error.message : String(error),
+        },
+      });
+    }
+
+    if (llmIntent && !isValidIntentShape(llmIntent)) {
+      throw new AnalyticsStrictFailure(
+        event.stageId,
+        "Query understanding returned an unusable intent shape.",
+      );
+    }
+
     const intent = repairIntent(llmIntent, input.question);
     await writeStageJson(
       input.artifactRoot,
@@ -72,51 +110,67 @@ Question: ${input.question}`,
   });
 }
 
-function repairIntent(intent: QueryIntent, question: string): QueryIntent {
+function repairIntent(
+  intent: QueryIntent | null,
+  question: string,
+): QueryIntent {
   const fallback = deterministicIntent(question);
+  const source = intent ?? fallback;
+
+  const requested = unique(
+    (source.requested_analyses ?? [])
+      .map((value) => value as QueryIntent["requested_analyses"][number])
+      .filter((value) => ALLOWED_ANALYSES.has(value)),
+  );
+
+  const rawTableHints = unique([
+    ...(source.table_hints ?? []),
+    ...fallback.table_hints,
+  ]);
 
   return {
     original_question: question,
     normalized_question:
-      intent.normalized_question || fallback.normalized_question,
+      source.normalized_question || fallback.normalized_question,
     feature_hints: unique([
-      ...(intent.feature_hints ?? []),
+      ...(source.feature_hints ?? []),
       ...fallback.feature_hints,
     ]),
     metric_hints: unique([
-      ...(intent.metric_hints ?? []),
+      ...(source.metric_hints ?? []),
       ...fallback.metric_hints,
     ]),
-    table_hints: unique([
-      ...(intent.table_hints ?? []),
-      ...fallback.table_hints,
-    ]),
+    table_hints: clampTableHints(rawTableHints),
     segment_hints: unique([
-      ...(intent.segment_hints ?? []),
+      ...(source.segment_hints ?? []),
       ...fallback.segment_hints,
     ]),
-    time_hints: unique([...(intent.time_hints ?? []), ...fallback.time_hints]),
+    time_hints: unique([...(source.time_hints ?? []), ...fallback.time_hints]),
     requested_analyses:
-      intent.requested_analyses?.length > 0
-        ? unique(intent.requested_analyses)
-        : fallback.requested_analyses,
-    ambiguity_notes: intent.ambiguity_notes ?? fallback.ambiguity_notes,
+      requested.length > 0 ? requested : fallback.requested_analyses,
+    ambiguity_notes: unique([
+      ...(source.ambiguity_notes ?? []),
+      ...fallback.ambiguity_notes,
+      ...(intent
+        ? []
+        : [
+            "Used deterministic intent parse because LLM intent was unavailable.",
+          ]),
+    ]),
   };
 }
 
-function validateIntent(intent: QueryIntent) {
-  if (
-    !intent ||
-    !Array.isArray(intent.feature_hints) ||
-    !Array.isArray(intent.metric_hints) ||
-    !Array.isArray(intent.table_hints) ||
-    !Array.isArray(intent.segment_hints) ||
-    !Array.isArray(intent.time_hints) ||
-    !Array.isArray(intent.requested_analyses) ||
-    !Array.isArray(intent.ambiguity_notes)
-  ) {
-    throw new Error("Groq query understanding returned an unusable intent.");
-  }
+function isValidIntentShape(intent: QueryIntent) {
+  return (
+    Boolean(intent) &&
+    Array.isArray(intent.feature_hints) &&
+    Array.isArray(intent.metric_hints) &&
+    Array.isArray(intent.table_hints) &&
+    Array.isArray(intent.segment_hints) &&
+    Array.isArray(intent.time_hints) &&
+    Array.isArray(intent.requested_analyses) &&
+    Array.isArray(intent.ambiguity_notes)
+  );
 }
 
 function deterministicIntent(question: string): QueryIntent {
@@ -140,12 +194,19 @@ function deterministicIntent(question: string): QueryIntent {
   if (has("slow", "latency", "time", "duration")) {
     requested_analyses.push("latency");
   }
-  if (has("schema", "table", "column", "event")) {
+  if (has("quality", "missing", "null", "duplicate")) {
+    requested_analyses.push("data_quality");
+  }
+  if (has("schema", "table", "column", "event", "metric", "available")) {
     requested_analyses.push("schema_explanation");
   }
   if (requested_analyses.length === 0) {
     requested_analyses.push("open_ended");
   }
+
+  const table_hints = (BASE_EVENT_TABLES as readonly string[]).filter((table) =>
+    question.toLowerCase().includes(table),
+  );
 
   return {
     original_question: question,
@@ -155,9 +216,12 @@ function deterministicIntent(question: string): QueryIntent {
         "checkout",
         "express",
         "family",
+        "group",
         "forex",
         "status",
+        "sharing",
         "abandoned",
+        "recovery",
       ].includes(token),
     ),
     metric_hints: Array.from(tokens).filter((token) =>
@@ -169,20 +233,26 @@ function deterministicIntent(question: string): QueryIntent {
         "latency",
         "success",
         "failure",
+        "value",
+        "coupon",
       ].includes(token),
     ),
-    table_hints: Array.from(tokens).filter((token) =>
-      token.includes("_events"),
-    ),
+    table_hints,
     segment_hints: Array.from(tokens).filter((token) =>
       ["ios", "android", "mobile", "web", "country", "device", "geo"].includes(
         token,
       ),
     ),
     time_hints: Array.from(tokens).filter((token) =>
-      ["today", "yesterday", "daily", "weekly", "month", "latest"].includes(
-        token,
-      ),
+      [
+        "today",
+        "yesterday",
+        "daily",
+        "weekly",
+        "month",
+        "latest",
+        "quarter",
+      ].includes(token),
     ),
     requested_analyses,
     ambiguity_notes: [],

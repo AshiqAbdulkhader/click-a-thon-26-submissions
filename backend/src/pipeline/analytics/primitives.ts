@@ -20,6 +20,7 @@ type TableShape = {
   table: string;
   columns: Set<string>;
   workflow?: PmRelevantContext["workflows"][number];
+  eventOrder: string[];
   isBaseTable: boolean;
 };
 
@@ -72,6 +73,31 @@ function buildPrimitiveQueries(input: {
     input.plan.answer_type,
   ]);
 
+  // Unknown-feature schema questions should list catalog only — not dump random features.
+  const unknownFeatureMode =
+    input.plan.answer_type === "schema_explanation" &&
+    input.plan.assumptions.some((item) =>
+      /not found in context memory|unknown feature|will not attribute/i.test(
+        item,
+      ),
+    );
+  if (unknownFeatureMode) {
+    queries.push({
+      id: "primitive_list_instrumented_features",
+      purpose: "List instrumented features currently in context memory.",
+      sql_intent:
+        "SELECT feature_slug, table_name FROM context.feature_registry FINAL",
+      expected_columns: ["feature_slug", "table_name"],
+      priority: "required",
+      sql: `
+SELECT feature_slug, table_name
+FROM context.feature_registry FINAL
+ORDER BY feature_slug
+LIMIT 100`,
+    });
+    return queries;
+  }
+
   for (const shape of shapes.slice(0, 4)) {
     if (shape.isBaseTable) {
       // Base tables are one-event-per-table; different primitives.
@@ -113,6 +139,9 @@ function buildPrimitiveQueries(input: {
     ) {
       if (hasCoreEventColumns(shape) && hasEntity(shape)) {
         queries.push(funnelBreakdown(shape));
+        if (shape.eventOrder.length >= 2) {
+          queries.push(orderedFunnelDropoff(shape));
+        }
         if (shape.workflow?.start_event && shape.workflow?.success_event) {
           queries.push(conversionRate(shape));
         }
@@ -227,32 +256,29 @@ function resolveTableShapes(
         .map((column) => column.column_name),
     );
 
-    // Base tables from DDL always have these even if registry was truncated.
-    if (isBaseTable) {
-      for (const required of [
-        "user_id",
-        "timestamp",
-        "device_type",
-        "os",
-        "geoip_country_code",
-        "destination",
-      ]) {
-        // don't invent — only add if registry already had some columns for table
-        if (columns.size > 0 && !columns.has(required)) {
-          // leave as-is; DDL bootstrap should have loaded them
-        }
-      }
-    }
+    const feature = context.features.find(
+      (item) =>
+        qualifyFeatureTable(item.table_name) === qualified ||
+        bareTableName(item.table_name) === bare,
+    );
+    const workflow = context.workflows.find(
+      (item) =>
+        item.table_name === qualified ||
+        item.table_name === bare ||
+        bareTableName(item.table_name) === bare,
+    );
+    const eventOrder =
+      feature?.event_names && feature.event_names.length > 0
+        ? feature.event_names
+        : [workflow?.start_event, workflow?.success_event].filter(
+            (value): value is string => Boolean(value),
+          );
 
     return {
       table: isBaseTable ? bare : qualified,
       columns,
-      workflow: context.workflows.find(
-        (workflow) =>
-          workflow.table_name === qualified ||
-          workflow.table_name === bare ||
-          bareTableName(workflow.table_name) === bare,
-      ),
+      workflow,
+      eventOrder,
       isBaseTable,
     };
   });
@@ -393,10 +419,12 @@ SELECT 'purchase_completed' AS stage, uniqExact(user_id) AS users FROM purchase_
 }
 
 function baseFunnelByDevicePrimitive(): GeneratedSqlQuery {
+  // Join only on application_id. Joining on user_id alone overstates conversion
+  // when a user has any purchase for any application.
   return {
     id: "primitive_base_funnel_by_device",
     purpose:
-      "Base funnel conversion by device_type (application_started → purchase_completed).",
+      "Base funnel conversion by device_type (application_started → purchase_completed on application_id).",
     sql_intent:
       "Compare distinct users who started applications vs completed purchase by device_type.",
     expected_columns: [
@@ -410,19 +438,18 @@ function baseFunnelByDevicePrimitive(): GeneratedSqlQuery {
 SELECT
   a.device_type AS device_type,
   uniqExact(a.user_id) AS started_users,
-  uniqExactIf(a.user_id, p.user_id IS NOT NULL) AS purchased_users,
+  uniqExactIf(a.user_id, p.application_id IS NOT NULL) AS purchased_users,
   if(
     uniqExact(a.user_id) = 0,
     0,
-    uniqExactIf(a.user_id, p.user_id IS NOT NULL) / uniqExact(a.user_id)
+    uniqExactIf(a.user_id, p.application_id IS NOT NULL) / uniqExact(a.user_id)
   ) AS conversion_rate
 FROM application_started AS a
 LEFT JOIN (
-  SELECT user_id, application_id
+  SELECT DISTINCT application_id
   FROM purchase_completed
-) AS p ON a.user_id = p.user_id AND (
-  a.application_id IS NULL OR p.application_id = a.application_id
-)
+  WHERE application_id IS NOT NULL AND toString(application_id) != ''
+) AS p ON a.application_id = p.application_id
 GROUP BY device_type
 ORDER BY started_users DESC
 LIMIT 50`,
@@ -565,6 +592,43 @@ SELECT
 FROM ${shape.table}
 GROUP BY event_name
 ORDER BY entities DESC
+LIMIT 100`,
+  };
+}
+
+/**
+ * Ordered funnel using workflow/feature event_order — not alphabetical joins.
+ * Emits one row per step with step_index so drop-off is computable in order.
+ */
+function orderedFunnelDropoff(shape: TableShape): GeneratedSqlQuery {
+  const entity = pickEntityColumn(shape) ?? "user_id";
+  const events = shape.eventOrder.slice(0, 12);
+  const unions = events
+    .map(
+      (eventName, index) => `
+SELECT
+  ${index + 1} AS step_index,
+  ${sqlString(eventName)} AS stage,
+  uniqExact(${entity}) AS users
+FROM ${shape.table}
+WHERE event_name = ${sqlString(eventName)}`,
+    )
+    .join("\nUNION ALL\n");
+
+  return {
+    id: idFor("primitive_ordered_funnel", shape.table),
+    purpose:
+      "Ordered feature funnel by known event sequence (for true step drop-off).",
+    sql_intent:
+      "Count unique entities at each workflow event in order with step_index.",
+    expected_columns: ["step_index", "stage", "users"],
+    priority: "required",
+    sql: `
+SELECT step_index, stage, users
+FROM (
+${unions}
+)
+ORDER BY step_index
 LIMIT 100`,
   };
 }

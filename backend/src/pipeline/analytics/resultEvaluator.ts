@@ -23,33 +23,46 @@ export async function runResultEvaluator(input: {
     const successfulQueries = new Set(
       input.results.map((result) => result.query_id),
     );
+    const nonEmptyResults = input.results.filter(
+      (result) => result.row_count > 0,
+    );
 
     for (const queryId of requiredQueries) {
       if (!successfulQueries.has(queryId)) {
+        // Primitives may still cover the question — note but don't over-penalize.
         evidenceGaps.push(
-          `Required query did not produce a result: ${queryId}`,
+          `Required planned query did not produce a result: ${queryId}`,
         );
       }
     }
 
-    const totalRows = input.results.reduce(
-      (sum, result) => sum + result.row_count,
-      0,
+    // min_rows means "at least N non-empty result sets", not sum of JSON rows.
+    // Aggregate funnels correctly return 4–20 rows total.
+    const minNonEmpty = Math.max(
+      1,
+      Number(input.plan.evidence_standard.min_rows) || 1,
     );
-    if (totalRows < input.plan.evidence_standard.min_rows) {
+    if (
+      nonEmptyResults.length < minNonEmpty &&
+      !input.plan.evidence_standard.can_answer_if_empty
+    ) {
       evidenceGaps.push(
-        `Result rows (${totalRows}) below evidence minimum (${input.plan.evidence_standard.min_rows}).`,
+        `Non-empty result sets (${nonEmptyResults.length}) below minimum (${minNonEmpty}).`,
       );
     }
 
-    if (totalRows === 0 && !input.plan.evidence_standard.can_answer_if_empty) {
+    if (
+      nonEmptyResults.length === 0 &&
+      !input.plan.evidence_standard.can_answer_if_empty
+    ) {
       repairNotes.push(
-        "Queries returned no rows. Broaden time filters, verify table/column names, or run schema discovery.",
+        "Queries returned no rows. Broaden filters, verify table/column names, or confirm the feature is instrumented.",
       );
     }
 
     if (
       input.plan.evidence_standard.needs_comparison &&
+      nonEmptyResults.length < 2 &&
       input.results.length < 2
     ) {
       evidenceGaps.push(
@@ -60,9 +73,16 @@ export async function runResultEvaluator(input: {
       );
     }
 
+    // Pass when we have at least one non-empty result OR schema explanation allowed empty.
+    const hasUsableEvidence =
+      nonEmptyResults.length > 0 ||
+      input.plan.evidence_standard.can_answer_if_empty;
+
     const evaluation: ResultEvaluation = {
-      passed: evidenceGaps.length === 0 && input.executionErrors.length === 0,
-      needs_repair: repairNotes.length > 0 || evidenceGaps.length > 0,
+      passed: hasUsableEvidence && input.executionErrors.length === 0,
+      needs_repair:
+        repairNotes.length > 0 ||
+        (evidenceGaps.length > 0 && nonEmptyResults.length === 0),
       repair_notes: repairNotes,
       evidence_gaps: evidenceGaps,
     };
@@ -80,6 +100,7 @@ export async function runResultEvaluator(input: {
       status: evaluation.passed ? "completed" : "failed",
       stageInput: {
         result_count: input.results.length,
+        non_empty_results: nonEmptyResults.length,
         execution_errors: input.executionErrors,
       },
       stageOutput: evaluation,

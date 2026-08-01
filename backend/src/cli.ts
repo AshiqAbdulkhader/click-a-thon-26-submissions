@@ -98,6 +98,13 @@ async function main() {
     console.log("");
     console.log(`Artifacts: ${answer.artifact_root}`);
     console.log(`Langfuse trace ID: ${answer.trace_id}`);
+    if (
+      /temporarily unavailable|Strict analytics mode refused/i.test(
+        `${answer.short_answer}\n${answer.caveats.join("\n")}`,
+      )
+    ) {
+      process.exitCode = 2;
+    }
     return;
   }
 

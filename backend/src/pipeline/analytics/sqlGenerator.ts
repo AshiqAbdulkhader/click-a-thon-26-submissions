@@ -3,6 +3,7 @@ import { callGroqJson } from "../groq.js";
 import { writeStageJson } from "../instrumentation/artifacts.js";
 import { bareTableName, qualifyFeatureTable } from "../warehouseTables.js";
 import { recordPipelineStage } from "../tracking.js";
+import { AnalyticsStrictFailure } from "./graceful.js";
 import { analyticsTrackingEvents } from "./trackingEvents.js";
 import {
   AnalysisPlan,
@@ -64,25 +65,27 @@ export async function runSqlGenerator(input: {
       liveColumns,
     );
 
-    const llmQueries = await callGroqJson<{ queries: GeneratedSqlQuery[] }>({
-      traceName: "groq.analytics.sql_generator",
-      temperature: 0,
-      maxTokens: 3000,
-      traceInput: {
-        question: input.question,
-        query_count: input.plan.queries.length,
-        execution_feedback: input.executionFeedback ?? [],
-        allowed_tables: allowedTables.slice(0, 40),
-      },
-      messages: [
-        {
-          role: "system",
-          content:
-            "You generate ClickHouse SELECT SQL for analytics. Return JSON only. SQL must be read-only and must not include FORMAT or semicolons. NEVER invent table or column names.",
+    let llmQueries: { queries: GeneratedSqlQuery[] } | null = null;
+    try {
+      llmQueries = await callGroqJson<{ queries: GeneratedSqlQuery[] }>({
+        traceName: "groq.analytics.sql_generator",
+        temperature: 0,
+        maxTokens: 3000,
+        traceInput: {
+          question: input.question,
+          query_count: input.plan.queries.length,
+          execution_feedback: input.executionFeedback ?? [],
+          allowed_tables: allowedTables.slice(0, 40),
         },
-        {
-          role: "user",
-          content: `Question:
+        messages: [
+          {
+            role: "system",
+            content:
+              "You generate ClickHouse SELECT SQL for analytics. Return JSON only. SQL must be read-only and must not include FORMAT or semicolons. NEVER invent table or column names. If you cannot write valid SQL for a planned id using only allowed tables/columns, omit that query rather than guessing.",
+          },
+          {
+            role: "user",
+            content: `Question:
 ${input.question}
 
 Intent:
@@ -94,7 +97,7 @@ ${compactJson(input.plan)}
 ALLOWED TABLES (use only these exact names):
 ${allowedTables.map((table) => `- ${table}`).join("\n") || "- (none — return empty queries)"}
 
-ALLOWED COLUMNS BY TABLE (from context memory; prefer these):
+ALLOWED COLUMNS BY TABLE:
 ${compactJson(columnsByTable, 16000)}
 
 KNOWN JOINS:
@@ -131,29 +134,41 @@ Return:
 
 Rules:
 - Only SELECT/WITH queries.
-- Return exactly one query object for every planned query id in the Plan. Preserve each planned id exactly.
-- Use ONLY exact table names from ALLOWED TABLES. Generated feature tables are silver.<name>_events. Base funnel tables are bare names (destination_card_clicked, application_started, document_uploaded, purchase_completed, pay_now_clicked, …).
-- Use ONLY columns from ALLOWED COLUMNS when listed for a table.
-- Prefer silver feature tables for feature-specific questions; join base funnel tables for baseline/uplift comparisons via user_id or application_id.
-- Feature event names live in event_name (not a free-text event column) for silver tables. Base tables are one event per table (no event_name column).
-- Use ClickHouse syntax.
-- For conditional unique counts, use uniqExactIf(entity_column, condition). Never call uniqIf with only a condition.
+- Prefer returning SQL for every planned query id, but NEVER invent tables/columns.
+- Use ONLY exact table names from ALLOWED TABLES.
+- Feature event names live in event_name for silver tables. Base tables are one event per table.
+- For funnel drop-off, use workflow event order (not alphabetical event_name joins).
+- For conditional unique counts, use uniqExactIf(entity_column, condition).
 - Limit exploratory result sets to at most 100 rows.
-- For root-cause questions, include comparison/baseline and segment cuts when available.
-- If allowed tables are empty, return an empty queries array rather than inventing tables.
-- Do not invent causal language in SQL comments; do not include comments.`,
+- Prefer gold.* MVs when listed for counts/conversion/segments.
+- If allowed tables are empty, return {"queries":[]}.`,
+          },
+        ],
+      });
+    } catch (error) {
+      // Strict: do not invent SQL. Deterministic primitives will still run.
+      span.update({
+        metadata: {
+          llm_failed: true,
+          error: error instanceof Error ? error.message : String(error),
         },
-      ],
-    });
-
-    if (!Array.isArray(llmQueries.queries)) {
-      throw new Error("Groq SQL generator returned an unusable queries array.");
+      });
+      llmQueries = { queries: [] };
     }
+
+    if (!llmQueries || !Array.isArray(llmQueries.queries)) {
+      throw new AnalyticsStrictFailure(
+        event.stageId,
+        "SQL generator returned an unusable queries payload.",
+      );
+    }
+
     const generated = repairGeneratedQueries(
       llmQueries.queries,
       input.plan,
-      catalog.tables,
+      allowedTables,
     );
+
     await writeStageJson(
       input.artifactRoot,
       event.stageId,
@@ -161,6 +176,9 @@ Rules:
       {
         queries: generated,
         allowed_tables: allowedTables,
+        omitted_planned_ids: input.plan.queries
+          .map((query) => query.id)
+          .filter((id) => !generated.some((query) => query.id === id)),
       },
     );
     await recordPipelineStage({
@@ -204,15 +222,12 @@ function buildSqlCatalog(context: PmRelevantContext, plan: AnalysisPlan) {
   const columnsByTable: Record<string, string[]> = {};
   for (const column of context.columns) {
     const table = qualifyFeatureTable(column.table_name);
-    if (!tables.includes(table) && !tables.includes(bareTableName(table))) {
-      // still include if plan/context referenced bare
-      if (
-        !tables.some(
-          (candidate) => bareTableName(candidate) === bareTableName(table),
-        )
-      ) {
-        continue;
-      }
+    if (
+      !tables.some(
+        (candidate) => bareTableName(candidate) === bareTableName(table),
+      )
+    ) {
+      continue;
     }
     const key =
       tables.find(
@@ -245,35 +260,63 @@ function mergeColumnsByTable(
     if (!columnsByTable[column.table_name].includes(column.column_name)) {
       columnsByTable[column.table_name].push(column.column_name);
     }
+    // Also index by bare name for base tables
+    const bare = bareTableName(column.table_name);
+    columnsByTable[bare] ??= [];
+    if (!columnsByTable[bare].includes(column.column_name)) {
+      columnsByTable[bare].push(column.column_name);
+    }
   }
   return columnsByTable;
 }
 
+/**
+ * Strict repair:
+ * - Keep only queries with real SQL from the LLM
+ * - Ground table names against catalog
+ * - Do NOT invent fallback SQL for missing planned ids
+ *   (primitives cover the reliable backbone)
+ */
 function repairGeneratedQueries(
   queries: GeneratedSqlQuery[],
   plan: AnalysisPlan,
   catalogTables: string[],
 ): GeneratedSqlQuery[] {
-  const byId = new Map(queries.map((query) => [query.id, query]));
-  const primaryTable =
-    plan.tables.map((table) => qualifyFeatureTable(table)).find(Boolean) ??
-    catalogTables[0];
+  const byId = new Map(
+    queries
+      .filter((query) => query?.id && query.sql?.trim())
+      .map((query) => [query.id, query]),
+  );
 
-  const repaired = plan.queries.map((planned) => {
+  const repaired: GeneratedSqlQuery[] = [];
+  for (const planned of plan.queries) {
     const generated = byId.get(planned.id);
     if (!generated?.sql?.trim()) {
-      throw new Error(
-        `Groq SQL generator omitted SQL for planned query ${planned.id}.`,
-      );
+      // Strict: omit rather than invent.
+      continue;
     }
-    return {
+    const sql = groundSqlTableNames(generated.sql, catalogTables);
+    if (!sql.trim()) {
+      continue;
+    }
+    repaired.push({
       ...planned,
-      sql: groundSqlTableNames(generated.sql, catalogTables),
-    };
-  });
+      purpose: generated.purpose || planned.purpose,
+      sql_intent: generated.sql_intent || planned.sql_intent,
+      expected_columns:
+        generated.expected_columns?.length > 0
+          ? generated.expected_columns
+          : planned.expected_columns,
+      priority: generated.priority || planned.priority,
+      sql,
+    });
+  }
 
-  // Keep any extra LLM queries that map to catalog tables after grounding.
+  // Extra LLM queries only if they ground cleanly.
   for (const query of queries) {
+    if (!query?.id || !query.sql?.trim()) {
+      continue;
+    }
     if (repaired.some((item) => item.id === query.id)) {
       continue;
     }
@@ -283,5 +326,5 @@ function repairGeneratedQueries(
     }
   }
 
-  return repaired.filter((query) => query.sql.trim().length > 0);
+  return repaired;
 }

@@ -196,3 +196,15 @@ Join memory now stores explicit edges from each Silver feature table to each bas
 ## Confidence Surface
 
 Final answers (CLI + `final_answer.md`) include an **Evidence (claim → query → confidence)** section. Confidence is not only a viz concern — judges can read it from artifacts without a UI.
+
+## Strict Mode (no invented answers)
+
+Analytics prefers **no reply over a wrong reply**:
+
+- LLM stages must return valid structured output when used for planning/SQL/prose.
+- If the LLM fails **and** there are no warehouse rows: return a graceful unavailable message (`please try later`) — never fabricate metrics.
+- If ClickHouse returned real rows: a **numbers-first** deterministic scaffold summarizes those rows even if insight prose is weak.
+- Missing planned SQL is **omitted**, not invented; deterministic primitives carry the reliable backbone.
+- `min_rows` is clamped to **1 non-empty result set** (aggregates are not required to return 1000 JSON rows).
+- Unknown features are refused: list instrumented features, do not attribute another feature’s metrics.
+- Junk `table_hints` like `user_sessions` / `checkout_events` are stripped before planning.

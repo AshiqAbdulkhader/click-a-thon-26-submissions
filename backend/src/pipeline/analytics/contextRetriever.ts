@@ -58,27 +58,22 @@ export async function retrievePmContext(input: {
       .slice(0, 8)
       .map((scored) => scored.item);
 
-    // If the PM named a feature but retrieval found nothing, fall back to all
-    // generated features (better than inventing tables) and shout about it.
+    // Strict: do NOT fall back to unrelated features when the named feature misses.
+    // Returning wrong feature metrics is worse than saying "not instrumented".
     let resolvedFeatures = features;
-    if (resolvedFeatures.length === 0 && registry.features.length > 0) {
-      if (
-        input.intent.feature_hints.length > 0 ||
-        /\b(express|checkout|group|family|status|abandon|forex|fx)\b/i.test(
-          input.question,
-        )
-      ) {
-        resolvedFeatures = registry.features.slice(0, 8).map((feature) => ({
-          ...feature,
-          table_name: qualifyFeatureTable(feature.table_name),
-        }));
-        retrievalNotes.push(
-          `No exact feature match for hints ${JSON.stringify(input.intent.feature_hints)}; fell back to ${resolvedFeatures.length} generated feature(s) from context memory.`,
-        );
-      }
-    }
+    const namedButMissing =
+      resolvedFeatures.length === 0 &&
+      (input.intent.feature_hints.length > 0 ||
+        /\b(feature|concierge|module)\b/i.test(input.question)) &&
+      !/\b(express|checkout|group|family|status|abandon|forex|fx|recovery|sharing)\b/i.test(
+        input.question,
+      );
 
-    if (
+    if (namedButMissing) {
+      retrievalNotes.push(
+        `WARNING: no generated feature matched this question. Will not attribute other feature metrics to an unknown feature. Known features: ${registry.features.map((feature) => feature.feature_slug).join(", ") || "(none)"}.`,
+      );
+    } else if (
       resolvedFeatures.length === 0 &&
       input.intent.feature_hints.length > 0
     ) {
