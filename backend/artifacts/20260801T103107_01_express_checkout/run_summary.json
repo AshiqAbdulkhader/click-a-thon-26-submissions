@@ -1,0 +1,19 @@
+{
+  "job_id": "20260801T103107_01_express_checkout",
+  "feature_slug": "express_checkout",
+  "table_name": "silver.express_checkout_events",
+  "row_count": 5507,
+  "event_names": [
+    "express_checkout_shown",
+    "express_checkout_selected",
+    "saved_method_used",
+    "otp_entered",
+    "express_payment_confirmed"
+  ],
+  "primary_entity": "application_id",
+  "success_event": "express_payment_confirmed",
+  "artifacts": "/Users/shivamtaneja/projects/clickhouse/schema-kings-clickathon/backend/artifacts/20260801T103107_01_express_checkout",
+  "model": "openai/gpt-oss-20b",
+  "groq_used": true,
+  "langfuse_trace_id": "a09f46a0e717dd5558804c3e1b8ebb48"
+}

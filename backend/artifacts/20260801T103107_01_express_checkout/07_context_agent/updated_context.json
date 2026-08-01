@@ -1,6 +1,6 @@
 {
   "version": 1,
-  "updated_at": "2026-08-01T10:32:37.252Z",
+  "updated_at": "2026-08-01T10:31:08.901Z",
   "features": [
     {
       "feature_slug": "express_checkout",
@@ -19,7 +19,7 @@
         "step_through_rate",
         "segment_comparison"
       ],
-      "added_at": "2026-08-01T10:32:37.252Z"
+      "added_at": "2026-08-01T10:31:08.901Z"
     },
     {
       "feature_slug": "instant_forex",

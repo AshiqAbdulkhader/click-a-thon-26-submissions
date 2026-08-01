@@ -1,5 +1,6 @@
 import { mkdir, readFile, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { startActiveObservation } from "@langfuse/tracing";
 import { callGroqJson } from "./groq.js";
 import {
   ContextBundle,
@@ -72,105 +73,302 @@ export async function runInstrumentationAgent(input: {
 }) {
   const specPath = path.join(input.specFolder, "spec.md");
   const eventsPath = path.join(input.specFolder, "events.ndjson");
-  const [specMarkdown, eventsNdjson] = await Promise.all([
-    readFile(specPath, "utf8"),
-    readFile(eventsPath, "utf8"),
-  ]);
-
   const featureSlug = normalizeFeatureSlug(path.basename(input.specFolder));
 
-  await writeStageJson(
-    input.artifactRoot,
+  const { specMarkdown, eventsNdjson } = await startActiveObservation(
     "01_bronze_ingest",
-    "bronze_report.json",
-    {
-      job_id: input.jobId,
-      feature_slug: featureSlug,
-      spec_path: specPath,
-      events_path: eventsPath,
-      spec_bytes: Buffer.byteLength(specMarkdown),
-      events_bytes: Buffer.byteLength(eventsNdjson),
-      ingested_at: new Date().toISOString(),
+    async (span) => {
+      span.update({
+        input: {
+          job_id: input.jobId,
+          feature_slug: featureSlug,
+          spec_path: specPath,
+          events_path: eventsPath,
+        },
+        metadata: {
+          agent: "instrumentation_agent",
+        },
+      });
+
+      const [loadedSpecMarkdown, loadedEventsNdjson] = await Promise.all([
+        readFile(specPath, "utf8"),
+        readFile(eventsPath, "utf8"),
+      ]);
+
+      const report = {
+        job_id: input.jobId,
+        feature_slug: featureSlug,
+        spec_path: specPath,
+        events_path: eventsPath,
+        spec_bytes: Buffer.byteLength(loadedSpecMarkdown),
+        events_bytes: Buffer.byteLength(loadedEventsNdjson),
+        ingested_at: new Date().toISOString(),
+      };
+
+      await writeStageJson(
+        input.artifactRoot,
+        "01_bronze_ingest",
+        "bronze_report.json",
+        report,
+      );
+
+      span.update({
+        output: {
+          ...report,
+          artifact: path.join(
+            input.artifactRoot,
+            "01_bronze_ingest",
+            "bronze_report.json",
+          ),
+        },
+      });
+
+      return {
+        specMarkdown: loadedSpecMarkdown,
+        eventsNdjson: loadedEventsNdjson,
+      };
     },
   );
 
-  const rawEvents = parseNdjson(eventsNdjson);
-  const eventProfile = profileEvents(featureSlug, rawEvents);
-  await writeStageJson(
-    input.artifactRoot,
+  const eventProfile = await startActiveObservation(
     "02_event_profiler",
-    "event_profile.json",
-    eventProfile,
+    async (span) => {
+      span.update({
+        input: {
+          feature_slug: featureSlug,
+          events_file: eventsPath,
+        },
+        metadata: {
+          agent: "instrumentation_agent",
+        },
+      });
+
+      const rawEvents = parseNdjson(eventsNdjson);
+      const profile = profileEvents(featureSlug, rawEvents);
+      await writeStageJson(
+        input.artifactRoot,
+        "02_event_profiler",
+        "event_profile.json",
+        profile,
+      );
+
+      span.update({
+        output: {
+          row_count: profile.row_count,
+          event_counts: profile.event_counts,
+          field_count: profile.fields.length,
+          artifact: path.join(
+            input.artifactRoot,
+            "02_event_profiler",
+            "event_profile.json",
+          ),
+        },
+      });
+
+      return profile;
+    },
   );
 
-  const manifest =
-    (await buildManifestWithGroq({
-      featureSlug,
-      specMarkdown,
-      eventProfile,
-      context: input.context,
-    })) ?? buildFallbackManifest(featureSlug, specMarkdown, eventProfile);
-
-  await writeStageJson(
-    input.artifactRoot,
+  const manifest = await startActiveObservation(
     "03_spec_parser",
-    "feature_manifest.json",
-    manifest,
+    async (span) => {
+      span.update({
+        input: {
+          feature_slug: featureSlug,
+          event_names: eventProfile.event_order,
+          context_features: input.context.generatedContext.features.length,
+        },
+        metadata: {
+          agent: "instrumentation_agent",
+          llm_provider: "groq",
+          model: process.env.GROQ_MODEL ?? "openai/gpt-oss-20b",
+        },
+      });
+
+      const parsedManifest =
+        (await buildManifestWithGroq({
+          featureSlug,
+          specMarkdown,
+          eventProfile,
+          context: input.context,
+        })) ?? buildFallbackManifest(featureSlug, specMarkdown, eventProfile);
+
+      await writeStageJson(
+        input.artifactRoot,
+        "03_spec_parser",
+        "feature_manifest.json",
+        parsedManifest,
+      );
+
+      span.update({
+        output: {
+          feature_name: parsedManifest.feature_name,
+          workflow_type: parsedManifest.workflow_type,
+          primary_entity: parsedManifest.primary_entity,
+          success_event: parsedManifest.success_event,
+          metric_hints: parsedManifest.metric_hints,
+          artifact: path.join(
+            input.artifactRoot,
+            "03_spec_parser",
+            "feature_manifest.json",
+          ),
+        },
+      });
+
+      return parsedManifest;
+    },
   );
 
-  const schemaPlan = buildSchemaPlan(manifest, eventProfile);
-  const schemaSql = renderCreateTableSql(schemaPlan);
-  const mappingPlan = buildMappingPlan(schemaPlan);
-
-  await writeStageJson(
-    input.artifactRoot,
+  const { schemaPlan, schemaSql, mappingPlan } = await startActiveObservation(
     "04_schema_generator",
-    "schema_plan.json",
-    schemaPlan,
-  );
-  await writeStageText(
-    input.artifactRoot,
-    "04_schema_generator",
-    "schema.sql",
-    schemaSql,
-  );
-  await writeStageJson(
-    input.artifactRoot,
-    "04_schema_generator",
-    "mapping.json",
-    mappingPlan,
+    async (span) => {
+      span.update({
+        input: {
+          feature_slug: featureSlug,
+          workflow_type: manifest.workflow_type,
+          primary_entity: manifest.primary_entity,
+          field_count: eventProfile.fields.length,
+        },
+        metadata: {
+          agent: "instrumentation_agent",
+          target_layer: "silver",
+        },
+      });
+
+      const plan = buildSchemaPlan(manifest, eventProfile);
+      const sql = renderCreateTableSql(plan);
+      const mapping = buildMappingPlan(plan);
+
+      await writeStageJson(
+        input.artifactRoot,
+        "04_schema_generator",
+        "schema_plan.json",
+        plan,
+      );
+      await writeStageText(
+        input.artifactRoot,
+        "04_schema_generator",
+        "schema.sql",
+        sql,
+      );
+      await writeStageJson(
+        input.artifactRoot,
+        "04_schema_generator",
+        "mapping.json",
+        mapping,
+      );
+
+      span.update({
+        output: {
+          table: `silver.${plan.table_name}`,
+          engine: plan.engine,
+          partition_by: plan.partition_by,
+          order_by: plan.order_by,
+          column_count: plan.columns.length,
+          artifacts: [
+            path.join(
+              input.artifactRoot,
+              "04_schema_generator",
+              "schema_plan.json",
+            ),
+            path.join(input.artifactRoot, "04_schema_generator", "schema.sql"),
+            path.join(
+              input.artifactRoot,
+              "04_schema_generator",
+              "mapping.json",
+            ),
+          ],
+        },
+      });
+
+      return { schemaPlan: plan, schemaSql: sql, mappingPlan: mapping };
+    },
   );
 
-  const schemaReview = reviewSchema(schemaPlan, eventProfile, manifest);
-  await writeStageText(
-    input.artifactRoot,
-    "05_schema_critic",
-    "schema_review.md",
-    schemaReview,
-  );
+  await startActiveObservation("05_schema_critic", async (span) => {
+    span.update({
+      input: {
+        table: `silver.${schemaPlan.table_name}`,
+        order_by: schemaPlan.order_by,
+        column_count: schemaPlan.columns.length,
+      },
+      metadata: {
+        agent: "schema_critic",
+      },
+    });
 
-  const updatedContext = await updateGeneratedContext({
-    repoRoot: input.repoRoot,
-    feature_slug: featureSlug,
-    table_name: schemaPlan.table_name,
-    primary_entity: manifest.primary_entity,
-    event_names: manifest.event_order,
-    success_event: manifest.success_event,
-    metric_hints: manifest.metric_hints,
+    const schemaReview = reviewSchema(schemaPlan, eventProfile, manifest);
+    await writeStageText(
+      input.artifactRoot,
+      "05_schema_critic",
+      "schema_review.md",
+      schemaReview,
+    );
+
+    span.update({
+      output: {
+        verdict: schemaReview.includes("Pass for v0")
+          ? "pass"
+          : "needs_attention",
+        artifact: path.join(
+          input.artifactRoot,
+          "05_schema_critic",
+          "schema_review.md",
+        ),
+      },
+    });
   });
 
-  await writeStageText(
-    input.artifactRoot,
-    "07_context_agent",
-    "context_diff.md",
-    renderContextDiff(manifest, schemaPlan, updatedContext),
-  );
-  await writeStageJson(
-    input.artifactRoot,
-    "07_context_agent",
-    "updated_context.json",
-    updatedContext,
-  );
+  await startActiveObservation("07_context_agent", async (span) => {
+    span.update({
+      input: {
+        feature_slug: featureSlug,
+        table_name: schemaPlan.table_name,
+        event_names: manifest.event_order,
+      },
+      metadata: {
+        agent: "context_agent_v0",
+      },
+    });
+
+    const updatedContext = await updateGeneratedContext({
+      repoRoot: input.repoRoot,
+      feature_slug: featureSlug,
+      table_name: schemaPlan.table_name,
+      primary_entity: manifest.primary_entity,
+      event_names: manifest.event_order,
+      success_event: manifest.success_event,
+      metric_hints: manifest.metric_hints,
+    });
+
+    await writeStageText(
+      input.artifactRoot,
+      "07_context_agent",
+      "context_diff.md",
+      renderContextDiff(manifest, schemaPlan, updatedContext),
+    );
+    await writeStageJson(
+      input.artifactRoot,
+      "07_context_agent",
+      "updated_context.json",
+      updatedContext,
+    );
+
+    span.update({
+      output: {
+        generated_features: updatedContext.features.length,
+        contradictions: updatedContext.contradictions.length,
+        artifacts: [
+          path.join(input.artifactRoot, "07_context_agent", "context_diff.md"),
+          path.join(
+            input.artifactRoot,
+            "07_context_agent",
+            "updated_context.json",
+          ),
+        ],
+      },
+    });
+  });
 
   return {
     featureSlug,
@@ -302,6 +500,17 @@ async function buildManifestWithGroq(input: {
           }),
         },
       ],
+      traceName: "groq.feature_manifest",
+      traceInput: {
+        task: "feature_manifest_for_schema_generation",
+        feature_slug: input.featureSlug,
+        event_names: input.eventProfile.event_order,
+        row_count: input.eventProfile.row_count,
+        field_count: input.eventProfile.fields.length,
+        context_features: input.context.generatedContext.features.length,
+        context_contradictions:
+          input.context.generatedContext.contradictions.length,
+      },
     });
   } catch (error) {
     console.warn(`Groq manifest generation failed; using fallback: ${error}`);
