@@ -277,26 +277,39 @@ function fallbackPlan(
   // Only use a feature table when the question/hints actually match it.
   // Never default to features[0] for unrelated questions (e.g. fake features).
   const matchedFeature = pickMatchedFeature(input.intent, input.context);
+  const contextCatalogQuestion = isContextCatalogQuestion(
+    input.question,
+    input.intent,
+  );
   const unknownNamedFeature =
+    !contextCatalogQuestion &&
     looksLikeNamedFeatureQuestion(input.question, input.intent) &&
     !matchedFeature;
+  const baselineRelevant = isBaselineRelevantQuestion(input.question);
 
   const featureTable = matchedFeature
     ? qualifyFeatureTable(matchedFeature.table_name)
     : null;
 
-  const answerType = unknownNamedFeature
+  const answerType = contextCatalogQuestion
     ? "schema_explanation"
-    : (input.intent.requested_analyses[0] ?? "open_ended");
+    : unknownNamedFeature
+      ? "schema_explanation"
+      : (input.intent.requested_analyses[0] ?? "open_ended");
   const tables = clampTablesToCatalog(
     unique(
-      (unknownNamedFeature
-        ? [
-            "context.feature_registry",
-            "context.metric_registry",
-            ...BASE_FUNNEL_TABLES,
-          ]
-        : [featureTable, ...BASE_FUNNEL_TABLES]
+      (contextCatalogQuestion
+        ? []
+        : unknownNamedFeature
+          ? [
+              "context.feature_registry",
+              "context.metric_registry",
+              ...BASE_FUNNEL_TABLES,
+            ]
+          : [
+              featureTable,
+              ...(featureTable && !baselineRelevant ? [] : BASE_FUNNEL_TABLES),
+            ]
       ).filter(Boolean) as string[],
     ),
     input.context,
@@ -330,41 +343,61 @@ function fallbackPlan(
     answer_type: answerType,
     tables,
     joins,
-    queries: unknownNamedFeature
+    queries: contextCatalogQuestion
       ? [
           {
-            id: "q1_list_features",
+            id: "q_context_catalog",
             purpose:
-              "List instrumented features so we can show the requested feature is missing.",
+              "Summarize instrumented feature tables, events, joins, metrics, and known caveats from context registries.",
             sql_intent:
-              "SELECT feature_slug, table_name FROM context.feature_registry ORDER BY updated_at DESC LIMIT 1 BY feature_slug",
-            expected_columns: ["feature_slug", "table_name"],
+              "Read context.feature_registry, context.workflow_registry, context.metric_registry, context.join_registry, and context.contradictions.",
+            expected_columns: [
+              "feature_slug",
+              "table_name",
+              "event_names",
+              "metric_name",
+              "left_table",
+              "right_table",
+              "summary",
+            ],
             priority: "required",
           },
         ]
-      : [
-          {
-            id: "q1_overview",
-            purpose: featureTable
-              ? "Get a compact overview of feature event volume and event names."
-              : "Get base funnel stage volumes for context.",
-            sql_intent: featureTable
-              ? `Summarize row counts by event_name from ${featureTable}.`
-              : "Count distinct users at each base funnel stage.",
-            expected_columns: featureTable
-              ? ["event_name", "rows"]
-              : ["stage", "users"],
-            priority: "required",
-          },
-          {
-            id: "q2_baseline",
-            purpose: "Base conversion funnel baseline for comparison.",
-            sql_intent:
-              "Count distinct users on destination_card_clicked, application_started, document_uploaded, purchase_completed.",
-            expected_columns: ["stage", "users"],
-            priority: "nice_to_have",
-          },
-        ],
+      : unknownNamedFeature
+        ? [
+            {
+              id: "q1_list_features",
+              purpose:
+                "List instrumented features so we can show the requested feature is missing.",
+              sql_intent:
+                "SELECT feature_slug, table_name FROM context.feature_registry ORDER BY updated_at DESC LIMIT 1 BY feature_slug",
+              expected_columns: ["feature_slug", "table_name"],
+              priority: "required",
+            },
+          ]
+        : [
+            {
+              id: "q1_overview",
+              purpose: featureTable
+                ? "Get a compact overview of feature event volume and event names."
+                : "Get base funnel stage volumes for context.",
+              sql_intent: featureTable
+                ? `Summarize row counts by event_name from ${featureTable}.`
+                : "Count distinct users at each base funnel stage.",
+              expected_columns: featureTable
+                ? ["event_name", "rows"]
+                : ["stage", "users"],
+              priority: "required",
+            },
+            {
+              id: "q2_baseline",
+              purpose: "Base conversion funnel baseline for comparison.",
+              sql_intent:
+                "Count distinct users on destination_card_clicked, application_started, document_uploaded, purchase_completed.",
+              expected_columns: ["stage", "users"],
+              priority: "nice_to_have",
+            },
+          ],
     evidence_standard: {
       needs_comparison: ["root_cause", "trend", "segment_comparison"].includes(
         answerType,
@@ -424,6 +457,9 @@ function pickMatchedFeature(intent: QueryIntent, context: PmRelevantContext) {
  * that might be missing — not base-funnel / metric / geo questions.
  */
 function looksLikeNamedFeatureQuestion(question: string, intent: QueryIntent) {
+  if (isContextCatalogQuestion(question, intent)) {
+    return false;
+  }
   if (isBaseWarehouseQuestion(question, intent)) {
     return false;
   }
@@ -473,6 +509,21 @@ function looksLikeNamedFeatureQuestion(question: string, intent: QueryIntent) {
   });
 
   return productHints.length > 0;
+}
+
+function isContextCatalogQuestion(question: string, intent: QueryIntent) {
+  const text = `${question} ${intent.normalized_question} ${intent.requested_analyses.join(" ")}`;
+  return (
+    /available|currently|catalog|inventory|what tables|what events|what joins|what metrics|known caveats|instrumented feature specs|across all/i.test(
+      text,
+    ) && /tables?|events?|joins?|metrics?|caveats?|features?/i.test(text)
+  );
+}
+
+function isBaselineRelevantQuestion(question: string) {
+  return /baseline|uplift|standard checkout|standard|versus standard|vs standard|base funnel|existing funnel|overall conversion|compared? to purchase|feature .* purchase|purchase overlap/i.test(
+    question,
+  );
 }
 
 function isBaseWarehouseQuestion(question: string, intent: QueryIntent) {

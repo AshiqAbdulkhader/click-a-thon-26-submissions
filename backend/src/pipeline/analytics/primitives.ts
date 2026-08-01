@@ -79,6 +79,9 @@ function buildPrimitiveQueries(input: {
     ...input.intent.requested_analyses,
     input.plan.answer_type,
   ]);
+  const baselineRelevant = isBaselineRelevantQuestion(
+    input.intent.original_question,
+  );
 
   // Unknown-feature schema questions should list catalog only — not dump random features.
   const unknownFeatureMode =
@@ -108,7 +111,18 @@ LIMIT 100`,
     return queries;
   }
 
-  for (const shape of shapes.slice(0, 4)) {
+  if (isContextCatalogQuestion(input.intent, input.plan)) {
+    queries.push(...contextCatalogPrimitives());
+    return queries;
+  }
+
+  const hasFeatureShape = shapes.some((shape) => !shape.isBaseTable);
+  const analysisShapes =
+    hasFeatureShape && !baselineRelevant
+      ? shapes.filter((shape) => !shape.isBaseTable)
+      : shapes;
+
+  for (const shape of analysisShapes.slice(0, 4)) {
     if (shape.isBaseTable) {
       // Base tables are one-event-per-table; different primitives.
       queries.push(baseTableOverview(shape));
@@ -172,12 +186,13 @@ LIMIT 100`,
       requested.has("root_cause") ||
       requested.has("open_ended")
     ) {
-      const segment = pickSegmentColumn(shape);
+      const segment = pickSegmentColumn(shape, input.intent);
       if (
         segment &&
         hasCoreEventColumns(shape) &&
         hasEntity(shape) &&
-        !gold.covered.has("segment")
+        (!gold.covered.has("segment") ||
+          isExplicitSegmentRequested(input.intent, segment))
       ) {
         queries.push(segmentComparison(shape, segment));
       }
@@ -208,16 +223,9 @@ LIMIT 100`,
     }
   }
 
-  // Cross-table base funnel primitive when baseline is relevant.
-  if (
-    requested.has("funnel") ||
-    requested.has("root_cause") ||
-    requested.has("open_ended") ||
-    requested.has("metric_lookup") ||
-    /baseline|uplift|conversion|funnel|overall/i.test(
-      input.intent.original_question,
-    )
-  ) {
+  // Cross-table base funnel primitive only when baseline context is asked for,
+  // or when there is no feature table to answer from.
+  if (baselineRelevant || (!hasFeatureShape && requested.has("funnel"))) {
     queries.push(baseFunnelPrimitive());
     queries.push(baseFunnelByDevicePrimitive());
   }
@@ -246,24 +254,9 @@ function resolveTableShapes(
 ): TableShape[] {
   const tables = unique([
     ...plan.tables.filter((table) => !table.startsWith("gold.")),
-    ...context.features.map((feature) => feature.table_name),
-    ...context.workflows
-      .map((workflow) => workflow.table_name)
-      .filter((table) => !table.includes("|")),
   ])
     .filter(Boolean)
     .map((table) => qualifyFeatureTable(table));
-
-  // Always try to include base funnel when present in column registry.
-  for (const base of BASE_FUNNEL_TABLES) {
-    if (
-      context.columns.some(
-        (column) => bareTableName(column.table_name) === base,
-      )
-    ) {
-      tables.push(base);
-    }
-  }
 
   return unique(tables)
     .filter(
@@ -334,6 +327,131 @@ function resolveTableShapes(
         },
       };
     });
+}
+
+function isBaselineRelevantQuestion(question: string) {
+  return /baseline|uplift|standard checkout|standard|versus standard|vs standard|base funnel|existing funnel|overall conversion|compared? to purchase|feature .* purchase|purchase overlap/i.test(
+    question,
+  );
+}
+
+function isContextCatalogQuestion(intent: QueryIntent, plan: AnalysisPlan) {
+  const text = `${intent.original_question} ${intent.normalized_question}`;
+  return (
+    plan.answer_type === "schema_explanation" &&
+    /tables?|events?|joins?|metrics?|known caveats?|available|instrumented feature specs/i.test(
+      text,
+    ) &&
+    !plan.assumptions.some((item) =>
+      /not found in context memory|unknown feature|will not attribute/i.test(
+        item,
+      ),
+    )
+  );
+}
+
+function contextCatalogPrimitives(): GeneratedSqlQuery[] {
+  return [
+    {
+      id: "primitive_context_feature_catalog",
+      purpose: "List instrumented features, tables, and event names.",
+      sql_intent: "Read feature registry catalog from context memory.",
+      expected_columns: ["feature_slug", "table_name", "event_names"],
+      priority: "required",
+      sql: `
+SELECT
+  feature_slug,
+  table_name,
+  event_names_json AS event_names
+FROM context.feature_registry FINAL
+ORDER BY feature_slug ASC, updated_at DESC
+LIMIT 1 BY feature_slug
+LIMIT 100`,
+    },
+    {
+      id: "primitive_context_workflow_catalog",
+      purpose: "List workflow start/success events and primary entities.",
+      sql_intent: "Read workflow registry catalog from context memory.",
+      expected_columns: [
+        "feature_slug",
+        "table_name",
+        "start_event",
+        "success_event",
+        "primary_entity",
+      ],
+      priority: "required",
+      sql: `
+SELECT
+  feature_slug,
+  table_name,
+  start_event,
+  success_event,
+  primary_entity
+FROM context.workflow_registry
+FINAL
+ORDER BY feature_slug ASC, updated_at DESC
+LIMIT 1 BY feature_slug
+LIMIT 100`,
+    },
+    {
+      id: "primitive_context_metric_catalog",
+      purpose: "List generated metrics by feature.",
+      sql_intent: "Read metric registry catalog from context memory.",
+      expected_columns: ["feature_slug", "metric_name", "grain", "caveats"],
+      priority: "required",
+      sql: `
+SELECT
+  feature_slug,
+  metric_name,
+  grain,
+  caveats
+FROM context.metric_registry
+FINAL
+ORDER BY feature_slug ASC, metric_name ASC
+LIMIT 200`,
+    },
+    {
+      id: "primitive_context_join_catalog",
+      purpose: "List generated join edges by feature.",
+      sql_intent: "Read join registry catalog from context memory.",
+      expected_columns: [
+        "left_table",
+        "left_column",
+        "right_table",
+        "right_column",
+        "confidence",
+      ],
+      priority: "required",
+      sql: `
+SELECT
+  left_table,
+  left_column,
+  right_table,
+  right_column,
+  confidence
+FROM context.join_registry
+FINAL
+WHERE left_table LIKE 'silver.%' OR right_table LIKE 'silver.%'
+ORDER BY left_table ASC, right_table ASC
+LIMIT 200`,
+    },
+    {
+      id: "primitive_context_caveat_catalog",
+      purpose: "List open contradictions and known caveats.",
+      sql_intent: "Read contradiction/caveat registry from context memory.",
+      expected_columns: ["id", "status", "summary"],
+      priority: "nice_to_have",
+      sql: `
+SELECT
+  id,
+  status,
+  summary
+FROM context.contradictions
+FINAL
+ORDER BY detected_at DESC
+LIMIT 50`,
+    },
+  ];
 }
 
 function goldPrimitivesForShape(
@@ -539,9 +657,42 @@ function pickEntityColumn(shape: TableShape) {
   return preferred.find((column) => shape.columns.has(column));
 }
 
-function pickSegmentColumn(shape: TableShape) {
+function pickSegmentColumn(shape: TableShape, intent?: QueryIntent) {
+  const questionText =
+    `${intent?.original_question ?? ""} ${intent?.normalized_question ?? ""}`.toLowerCase();
+  const mentionedColumn = Array.from(shape.columns).find((column) =>
+    questionText.includes(column.toLowerCase()),
+  );
+  if (mentionedColumn) {
+    return mentionedColumn;
+  }
+
+  const explicit = [
+    ...(intent?.segment_hints ?? []),
+    ...(intent?.metric_hints ?? []),
+  ]
+    .map(normalizeName)
+    .find((hint) =>
+      Array.from(shape.columns).some(
+        (column) => normalizeName(column) === hint,
+      ),
+    );
+  if (explicit) {
+    return Array.from(shape.columns).find(
+      (column) => normalizeName(column) === explicit,
+    );
+  }
+
   const preferred = [
     ...(shape.workflow?.segment_columns ?? []),
+    "channel",
+    "drop_step",
+    "saved_method_type",
+    "group_size",
+    "status_shared",
+    "recipient_is_new_user",
+    "to_currency",
+    "from_currency",
     "device_type",
     "device",
     "os",
@@ -553,6 +704,28 @@ function pickSegmentColumn(shape: TableShape) {
     "city",
   ];
   return preferred.find((column) => shape.columns.has(column));
+}
+
+function normalizeName(value: string) {
+  return value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+}
+
+function isExplicitSegmentRequested(intent: QueryIntent, segment: string) {
+  const normalizedSegment = normalizeName(segment);
+  const text =
+    `${intent.original_question} ${intent.normalized_question}`.toLowerCase();
+  return (
+    text.includes(segment.toLowerCase()) ||
+    intent.segment_hints.some(
+      (hint) => normalizeName(hint) === normalizedSegment,
+    ) ||
+    intent.metric_hints.some(
+      (hint) => normalizeName(hint) === normalizedSegment,
+    )
+  );
 }
 
 function pickColumn(shape: TableShape, fragments: string[]) {

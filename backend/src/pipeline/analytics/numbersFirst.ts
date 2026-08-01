@@ -97,7 +97,14 @@ export function buildNumbersFirstDraft(
     };
   }
 
-  const trusted = collectTrustedMetrics(results);
+  const catalogAnswer = detectContextCatalogAnswer(results);
+  if (catalogAnswer) {
+    return catalogAnswer;
+  }
+
+  const trusted = collectTrustedMetrics(results, {
+    baselineRelevant: isBaselineRelevantQuestion(evidencePack.question),
+  });
   const findings = [
     ...trusted.findings,
     ...results.flatMap((result) => summarizeResult(result)),
@@ -173,7 +180,28 @@ export function mergeWithNumbersFirst(
     };
   }
 
-  const trusted = collectTrustedMetrics(evidencePack.query_results);
+  const trusted = collectTrustedMetrics(evidencePack.query_results, {
+    baselineRelevant: isBaselineRelevantQuestion(evidencePack.question),
+  });
+  const catalogAnswer = buildNumbersFirstDraft(evidencePack);
+  if (
+    evidencePack.plan.answer_type === "schema_explanation" &&
+    catalogAnswer.evidence.some((item) =>
+      /^primitive_context_/.test(item.query_id),
+    )
+  ) {
+    return {
+      ...catalogAnswer,
+      recommended_actions: uniqueStrings([
+        ...catalogAnswer.recommended_actions,
+        ...llmDraft.recommended_actions,
+      ]).slice(0, 6),
+      caveats: uniqueStrings([
+        ...catalogAnswer.caveats,
+        "Context catalog answers are summarized deterministically from registry rows.",
+      ]),
+    };
+  }
   const questionWantsMath =
     /funnel|conversion|drop|rate|ios|android|device|segment|uplift|baseline|success/i.test(
       evidencePack.question,
@@ -239,48 +267,130 @@ export function mergeWithNumbersFirst(
   };
 }
 
+function detectContextCatalogAnswer(
+  results: QueryResult[],
+): InsightDraft | null {
+  const featureCatalog = results.find(
+    (result) => result.query_id === "primitive_context_feature_catalog",
+  );
+  if (!featureCatalog || featureCatalog.rows.length === 0) {
+    return null;
+  }
+
+  const workflowCatalog = results.find(
+    (result) => result.query_id === "primitive_context_workflow_catalog",
+  );
+  const metricCatalog = results.find(
+    (result) => result.query_id === "primitive_context_metric_catalog",
+  );
+  const joinCatalog = results.find(
+    (result) => result.query_id === "primitive_context_join_catalog",
+  );
+  const caveatCatalog = results.find(
+    (result) => result.query_id === "primitive_context_caveat_catalog",
+  );
+
+  const featureRows = featureCatalog.rows.filter((row) =>
+    /^silver\./.test(String(row.table_name ?? "")),
+  );
+  const features = featureRows.map((row) => ({
+    slug: String(row.feature_slug ?? "unknown"),
+    table: String(row.table_name ?? ""),
+    events: parseEventNames(row.event_names),
+  }));
+  const featureSlugs = new Set(features.map((feature) => feature.slug));
+  const metricRows =
+    metricCatalog?.rows.filter((row) =>
+      featureSlugs.has(String(row.feature_slug ?? "")),
+    ) ?? [];
+  const joinRows =
+    joinCatalog?.rows.filter((row) =>
+      [...featureSlugs].some((slug) =>
+        String(row.left_table ?? "").includes(slug),
+      ),
+    ) ?? [];
+  const caveatRows = caveatCatalog?.rows ?? [];
+  const totalEvents = features.reduce(
+    (sum, feature) => sum + feature.events.length,
+    0,
+  );
+  const metricsByFeature = new Map<string, number>();
+  for (const row of metricRows) {
+    const slug = String(row.feature_slug ?? "");
+    metricsByFeature.set(slug, (metricsByFeature.get(slug) ?? 0) + 1);
+  }
+
+  const featureFindings = features.map((feature) => {
+    const metricCount = metricsByFeature.get(feature.slug) ?? 0;
+    return `${feature.slug}: ${feature.table}, ${feature.events.length} events (${feature.events.join(", ")}), ${metricCount} metrics`;
+  });
+
+  return {
+    short_answer: `Context has ${features.length} instrumented feature tables, ${totalEvents} feature events, ${joinRows.length} feature join edges, ${metricRows.length} generated metrics, and ${caveatRows.length} caveat/contradiction rows.`,
+    key_findings: [
+      ...featureFindings,
+      joinRows.length > 0
+        ? `Join edges are registered for feature tables, mostly to base funnel/supporting tables.`
+        : "No feature join edges were returned from context.join_registry.",
+      caveatRows.length > 0
+        ? `Known caveats include: ${caveatRows
+            .slice(0, 3)
+            .map((row) => String(row.summary ?? row.id ?? ""))
+            .filter(Boolean)
+            .join(" | ")}`
+        : "No caveat rows were returned from context.contradictions.",
+      workflowCatalog
+        ? `${workflowCatalog.rows.length} workflow rows were returned, including base workflow rows when present.`
+        : "",
+    ].filter(Boolean),
+    evidence: results.map((result) => ({
+      claim: compactRowClaim(result),
+      query_id: result.query_id,
+      confidence: "high" as const,
+    })),
+    recommended_actions: [
+      "Use feature-specific context rows for judged demos instead of broad base-funnel summaries.",
+      "Verify context.join_registry if a feature needs cross-table uplift or base-funnel attribution.",
+    ],
+    caveats: [
+      "Feature event counts come from context.feature_registry event_names_json.",
+      "Generated metric definitions are starting points; analytics queries should still validate denominators.",
+    ],
+  };
+}
+
+function parseEventNames(value: unknown): string[] {
+  if (Array.isArray(value)) {
+    return value.map(String).filter(Boolean);
+  }
+  if (typeof value !== "string" || !value.trim()) {
+    return [];
+  }
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed.map(String).filter(Boolean) : [];
+  } catch {
+    return value
+      .split(",")
+      .map((item) => item.trim())
+      .filter(Boolean);
+  }
+}
+
 type TrustedMetrics = {
   headline: string | null;
   findings: string[];
   rates: number[];
 };
 
-function collectTrustedMetrics(results: QueryResult[]): TrustedMetrics {
+function collectTrustedMetrics(
+  results: QueryResult[],
+  options: { baselineRelevant: boolean },
+): TrustedMetrics {
   const findings: string[] = [];
   const rates: number[] = [];
   let headline: string | null = null;
-
-  const baseFunnel = results.find(
-    (result) =>
-      result.query_id === "primitive_base_funnel" && result.rows.length > 0,
-  );
-  if (baseFunnel) {
-    const stages = orderBaseFunnelRows(baseFunnel.rows);
-    if (stages.length > 0) {
-      const path = stages
-        .map((row) => `${row.stage}=${formatInt(row.users)}`)
-        .join(" → ");
-      findings.push(`Base funnel (unique users): ${path}`);
-      for (let i = 0; i < stages.length - 1; i += 1) {
-        const from = stages[i].users;
-        const to = stages[i + 1].users;
-        if (from > 0) {
-          const rate = to / from;
-          rates.push(rate);
-          findings.push(
-            `${stages[i].stage} → ${stages[i + 1].stage}: ${(rate * 100).toFixed(2)}% (${formatInt(from)} → ${formatInt(to)})`,
-          );
-        }
-      }
-      const first = stages[0];
-      const last = stages[stages.length - 1];
-      if (first.users > 0) {
-        const overall = last.users / first.users;
-        rates.push(overall);
-        headline = `Pre-purchase funnel (unique users): ${path}. Overall ${first.stage} → ${last.stage}: ${(overall * 100).toFixed(2)}% (${formatInt(first.users)} → ${formatInt(last.users)}).`;
-      }
-    }
-  }
+  const hasFeatureEvidence = results.some((result) => isFeatureResult(result));
 
   const ordered = results.find(
     (result) =>
@@ -306,9 +416,7 @@ function collectTrustedMetrics(results: QueryResult[]): TrustedMetrics {
       if (first.users > 0) {
         const overall = last.users / first.users;
         rates.push(overall);
-        if (!headline) {
-          headline = `Feature funnel: ${path}. Start→end conversion: ${(overall * 100).toFixed(2)}% (${formatInt(first.users)} → ${formatInt(last.users)}).`;
-        }
+        headline = `Feature funnel: ${path}. Start→end conversion: ${(overall * 100).toFixed(2)}% (${formatInt(first.users)} → ${formatInt(last.users)}).`;
       }
       for (let i = 0; i < stages.length - 1; i += 1) {
         const from = stages[i].users;
@@ -345,13 +453,52 @@ function collectTrustedMetrics(results: QueryResult[]): TrustedMetrics {
     }
   }
 
-  // Prefer single-dimension device rollups over multi-dim sparse cells.
-  const deviceSeg = results.find(
+  const baseFunnel = results.find(
     (result) =>
-      /primitive_gold_segment_by_device_type|primitive_base_funnel_by_device/i.test(
-        result.query_id,
-      ) && result.rows.length > 0,
+      result.query_id === "primitive_base_funnel" && result.rows.length > 0,
   );
+  if (baseFunnel && (options.baselineRelevant || !hasFeatureEvidence)) {
+    const stages = orderBaseFunnelRows(baseFunnel.rows);
+    if (stages.length > 0) {
+      const path = stages
+        .map((row) => `${row.stage}=${formatInt(row.users)}`)
+        .join(" → ");
+      findings.push(`Base funnel (unique users): ${path}`);
+      for (let i = 0; i < stages.length - 1; i += 1) {
+        const from = stages[i].users;
+        const to = stages[i + 1].users;
+        if (from > 0) {
+          const rate = to / from;
+          rates.push(rate);
+          findings.push(
+            `${stages[i].stage} → ${stages[i + 1].stage}: ${(rate * 100).toFixed(2)}% (${formatInt(from)} → ${formatInt(to)})`,
+          );
+        }
+      }
+      const first = stages[0];
+      const last = stages[stages.length - 1];
+      if (first.users > 0 && !headline) {
+        const overall = last.users / first.users;
+        rates.push(overall);
+        headline = `Pre-purchase funnel (unique users): ${path}. Overall ${first.stage} → ${last.stage}: ${(overall * 100).toFixed(2)}% (${formatInt(first.users)} → ${formatInt(last.users)}).`;
+      }
+    }
+  }
+
+  // Prefer feature device rollups; use base device only for explicit baseline questions.
+  const deviceSeg =
+    results.find(
+      (result) =>
+        isFeatureResult(result) &&
+        hasDeviceRateRows(result) &&
+        result.rows.length > 0,
+    ) ??
+    results.find(
+      (result) =>
+        (options.baselineRelevant || !hasFeatureEvidence) &&
+        /primitive_base_funnel_by_device/i.test(result.query_id) &&
+        result.rows.length > 0,
+    );
   if (deviceSeg) {
     const rows = [...deviceSeg.rows]
       .map((row) => ({
@@ -379,7 +526,10 @@ function collectTrustedMetrics(results: QueryResult[]): TrustedMetrics {
         `Device success highest: ${best.device} ${(best.rate * 100).toFixed(2)}% (${formatInt(best.success)}/${formatInt(best.entities)})`,
       );
       rates.push(...rows.map((row) => row.rate));
-      if (/ios|android|device/i.test(deviceSeg.purpose + deviceSeg.query_id)) {
+      if (
+        isFeatureResult(deviceSeg) &&
+        /ios|android|device/i.test(deviceSeg.purpose + deviceSeg.query_id)
+      ) {
         const ios = rows.find((row) => /ios/i.test(row.device));
         const android = rows.find((row) => /android/i.test(row.device));
         if (ios && android) {
@@ -390,6 +540,36 @@ function collectTrustedMetrics(results: QueryResult[]): TrustedMetrics {
   }
 
   return { headline, findings: uniqueStrings(findings), rates };
+}
+
+function isBaselineRelevantQuestion(question: string) {
+  return /baseline|uplift|standard checkout|standard|versus standard|vs standard|base funnel|existing funnel|overall conversion|compared? to purchase|feature .* purchase|purchase overlap/i.test(
+    question,
+  );
+}
+
+function isFeatureResult(result: QueryResult) {
+  return (
+    !/^primitive_base_/i.test(result.query_id) &&
+    !/\bFROM\s+(destination_card_clicked|application_started|document_uploaded|purchase_completed|search_typed|landing_page_scrolled|auth_completed|pay_now_clicked)\b/i.test(
+      result.sql,
+    ) &&
+    (/\b(silver|gold)\./i.test(result.sql) ||
+      /silver_|gold_|feature|express|group|status|recovery|forex/i.test(
+        result.query_id,
+      ))
+  );
+}
+
+function hasDeviceRateRows(result: QueryResult) {
+  return result.rows.some(
+    (row) =>
+      "device_type" in row &&
+      ("success_rate" in row ||
+        "conversion_rate" in row ||
+        "success_entities" in row ||
+        "purchased_users" in row),
+  );
 }
 
 function orderBaseFunnelRows(rows: Record<string, unknown>[]) {
