@@ -228,6 +228,10 @@ pnpm cli setup
 # 7. Run one pipeline smoke test.
 pnpm exec tsc --noEmit
 pnpm cli run ../specs/01_express_checkout
+pnpm cli run ../specs/02_group_family
+pnpm cli run ../specs/03_status_sharing
+pnpm cli run ../specs/04_abandoned_checkout_recovery
+pnpm cli run ../specs/05_instant_forex
 ```
 
 ## Backend Env For Local
