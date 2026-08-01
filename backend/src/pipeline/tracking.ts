@@ -66,6 +66,25 @@ CREATE TABLE IF NOT EXISTS ops.data_load_tables
 ENGINE = ReplacingMergeTree(loaded_at)
 ORDER BY (load_id, table_name)
 `);
+
+  await executeClickHouse(`
+CREATE TABLE IF NOT EXISTS ops.analytics_queries
+(
+    job_id String,
+    query_id String,
+    purpose String,
+    priority LowCardinality(String),
+    status LowCardinality(String),
+    sql String,
+    guardrail_warnings_json String,
+    row_count Nullable(UInt64),
+    duration_ms Nullable(UInt64),
+    error String,
+    recorded_at DateTime64(3) DEFAULT now64(3)
+)
+ENGINE = MergeTree
+ORDER BY (job_id, query_id, recorded_at)
+`);
 }
 
 export async function recordPipelineRun(input: {
@@ -158,6 +177,35 @@ ${JSON.stringify({
   actual_rows: input.actualRows,
   status: input.status,
   validation_json: JSON.stringify(input.validation ?? {}),
+})}
+`);
+}
+
+export async function recordAnalyticsQuery(input: {
+  jobId: string;
+  queryId: string;
+  purpose: string;
+  priority: "required" | "nice_to_have" | string;
+  status: "blocked" | "completed" | "failed";
+  sql: string;
+  guardrailWarnings?: string[];
+  rowCount?: number | null;
+  durationMs?: number | null;
+  error?: string;
+}) {
+  await ensureTrackingTables();
+  await executeClickHouse(`INSERT INTO ops.analytics_queries FORMAT JSONEachRow
+${JSON.stringify({
+  job_id: input.jobId,
+  query_id: input.queryId,
+  purpose: input.purpose,
+  priority: input.priority,
+  status: input.status,
+  sql: input.sql,
+  guardrail_warnings_json: JSON.stringify(input.guardrailWarnings ?? []),
+  row_count: input.rowCount ?? null,
+  duration_ms: input.durationMs ?? null,
+  error: input.error ?? "",
 })}
 `);
 }

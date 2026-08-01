@@ -1,7 +1,7 @@
 import { startActiveObservation } from "@langfuse/tracing";
 import { queryClickHouseText } from "../clickhouse.js";
 import { writeStageJson } from "../instrumentation/artifacts.js";
-import { recordPipelineStage } from "../tracking.js";
+import { recordAnalyticsQuery, recordPipelineStage } from "../tracking.js";
 import { analyticsTrackingEvents } from "./trackingEvents.js";
 import { GeneratedSqlQuery, QueryResult, SqlGuardrailResult } from "./types.js";
 
@@ -17,12 +17,24 @@ export async function runQueryExecutor(input: {
 
     for (const query of input.queries) {
       if (!query.guardrail.passed) {
-        errors.push(
-          `${query.id}: blocked by SQL guardrail: ${query.guardrail.warnings.join("; ")}`,
-        );
+        const error = `${query.id}: blocked by SQL guardrail: ${query.guardrail.warnings.join("; ")}`;
+        errors.push(error);
+        await recordAnalyticsQuery({
+          jobId: input.jobId,
+          queryId: query.id,
+          purpose: query.purpose,
+          priority: query.priority,
+          status: "blocked",
+          sql: query.guardrail.repaired_sql,
+          guardrailWarnings: query.guardrail.warnings,
+          rowCount: null,
+          durationMs: null,
+          error,
+        });
         continue;
       }
 
+      const startedAt = Date.now();
       try {
         const sql = `${query.guardrail.repaired_sql}\nFORMAT JSON`;
         const raw = await queryClickHouseText(sql);
@@ -39,10 +51,33 @@ export async function runQueryExecutor(input: {
           row_count: parsed.rows ?? parsed.data?.length ?? 0,
           statistics: parsed.statistics,
         });
+        const result = results.at(-1);
+        await recordAnalyticsQuery({
+          jobId: input.jobId,
+          queryId: query.id,
+          purpose: query.purpose,
+          priority: query.priority,
+          status: "completed",
+          sql: query.guardrail.repaired_sql,
+          guardrailWarnings: query.guardrail.warnings,
+          rowCount: result?.row_count ?? 0,
+          durationMs: Date.now() - startedAt,
+        });
       } catch (error) {
-        errors.push(
-          `${query.id}: ${error instanceof Error ? error.message : String(error)}`,
-        );
+        const message = `${query.id}: ${error instanceof Error ? error.message : String(error)}`;
+        errors.push(message);
+        await recordAnalyticsQuery({
+          jobId: input.jobId,
+          queryId: query.id,
+          purpose: query.purpose,
+          priority: query.priority,
+          status: "failed",
+          sql: query.guardrail.repaired_sql,
+          guardrailWarnings: query.guardrail.warnings,
+          rowCount: null,
+          durationMs: Date.now() - startedAt,
+          error: message,
+        });
       }
     }
 
