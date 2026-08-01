@@ -34,6 +34,38 @@ CREATE TABLE IF NOT EXISTS ops.pipeline_stages
 ENGINE = MergeTree
 ORDER BY (job_id, stage_id, recorded_at)
 `);
+
+  await executeClickHouse(`
+CREATE TABLE IF NOT EXISTS ops.data_loads
+(
+    load_id String,
+    load_type LowCardinality(String),
+    status LowCardinality(String),
+    trace_id String,
+    started_at DateTime64(3),
+    completed_at Nullable(DateTime64(3)),
+    summary_json String,
+    updated_at DateTime64(3) DEFAULT now64(3)
+)
+ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (load_id)
+`);
+
+  await executeClickHouse(`
+CREATE TABLE IF NOT EXISTS ops.data_load_tables
+(
+    load_id String,
+    table_name String,
+    source_path String,
+    expected_rows Nullable(UInt64),
+    actual_rows UInt64,
+    status LowCardinality(String),
+    validation_json String,
+    loaded_at DateTime64(3) DEFAULT now64(3)
+)
+ENGINE = ReplacingMergeTree(loaded_at)
+ORDER BY (load_id, table_name)
+`);
 }
 
 export async function recordPipelineRun(input: {
@@ -80,6 +112,52 @@ ${JSON.stringify({
   input_json: JSON.stringify(input.stageInput ?? {}),
   output_json: JSON.stringify(input.stageOutput ?? {}),
   error: input.error ?? "",
+})}
+`);
+}
+
+export async function recordDataLoad(input: {
+  loadId: string;
+  loadType: string;
+  status: "started" | "completed" | "failed";
+  traceId?: string;
+  startedAt: string;
+  completedAt?: string | null;
+  summary?: Record<string, unknown>;
+}) {
+  await ensureTrackingTables();
+  await executeClickHouse(`INSERT INTO ops.data_loads FORMAT JSONEachRow
+${JSON.stringify({
+  load_id: input.loadId,
+  load_type: input.loadType,
+  status: input.status,
+  trace_id: input.traceId ?? "",
+  started_at: input.startedAt,
+  completed_at: input.completedAt ?? null,
+  summary_json: JSON.stringify(input.summary ?? {}),
+})}
+`);
+}
+
+export async function recordDataLoadTable(input: {
+  loadId: string;
+  tableName: string;
+  sourcePath: string;
+  expectedRows?: number | null;
+  actualRows: number;
+  status: "completed" | "failed";
+  validation?: Record<string, unknown>;
+}) {
+  await ensureTrackingTables();
+  await executeClickHouse(`INSERT INTO ops.data_load_tables FORMAT JSONEachRow
+${JSON.stringify({
+  load_id: input.loadId,
+  table_name: input.tableName,
+  source_path: input.sourcePath,
+  expected_rows: input.expectedRows ?? null,
+  actual_rows: input.actualRows,
+  status: input.status,
+  validation_json: JSON.stringify(input.validation ?? {}),
 })}
 `);
 }

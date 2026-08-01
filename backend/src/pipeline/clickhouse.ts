@@ -22,6 +22,35 @@ export async function queryClickHouseText(sql: string) {
   return clickHouseRequest(sql);
 }
 
+export async function insertClickHouseFormat(input: {
+  query: string;
+  data: Buffer;
+  contentType?: string;
+}) {
+  const config = getClickHouseConfig();
+  const url = new URL(config.url);
+  url.searchParams.set("query", input.query);
+  const requestBody = new Uint8Array(input.data);
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Basic ${Buffer.from(`${config.user}:${config.password}`).toString("base64")}`,
+      "Content-Type": input.contentType ?? "application/octet-stream",
+      "X-ClickHouse-Database": config.database,
+    },
+    body: requestBody,
+  });
+
+  const responseBody = await response.text();
+  if (!response.ok) {
+    throw new Error(
+      `ClickHouse insert failed: ${response.status} ${responseBody}`,
+    );
+  }
+  return responseBody;
+}
+
 async function clickHouseRequest(sql: string) {
   const config = getClickHouseConfig();
   const response = await fetch(config.url, {

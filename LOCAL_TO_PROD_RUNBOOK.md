@@ -51,17 +51,22 @@ ops
 schema_kings
 ```
 
-## Load Base Data Locally
+## Load Base Data And Context Locally
 
-Load the 8 provided Atlys tables into the local `schema_kings` database:
+Use one traced setup command. Start Langfuse first so base data loading and
+context bootstrap are both visible in the trace.
 
 ```bash
-cd /Users/shivamtaneja/projects/clickhouse/schema-kings-clickathon/data
-
-CH='docker compose -f ../docker-compose.yml exec -T clickhouse clickhouse-client --user schema_kings --password schema_kings' \
-DB=schema_kings \
-./load.sh
+cd /Users/shivamtaneja/projects/clickhouse/schema-kings-clickathon
+docker compose --profile langfuse up -d
+cd backend
+pnpm cli setup:local
 ```
+
+This command loads the 8 provided Atlys tables, bootstraps ClickHouse-backed
+context memory, records setup status in `ops.data_loads` and
+`ops.data_load_tables`, and emits a Langfuse trace named
+`schema-kings.local-setup`.
 
 Verify the 8 base tables:
 
@@ -102,7 +107,7 @@ purchase_completed             7054
 search_typed                 599630
 ```
 
-Check pipeline databases/tables:
+Check pipeline/context/ops databases and tables:
 
 ```bash
 docker compose exec -T clickhouse clickhouse-client \
@@ -111,41 +116,54 @@ docker compose exec -T clickhouse clickhouse-client \
   --query "
 SELECT database, name
 FROM system.tables
-WHERE database IN ('bronze', 'silver', 'gold', 'schema_kings')
+WHERE database IN ('bronze', 'silver', 'gold', 'context', 'ops', 'schema_kings')
 ORDER BY database, name
 "
 ```
 
-Bootstrap base context into ClickHouse memory:
+Verify setup tracking:
 
 ```bash
-cd /Users/shivamtaneja/projects/clickhouse/schema-kings-clickathon/backend
-pnpm cli context:bootstrap
-```
-
-Verify ClickHouse-backed context memory:
-
-```bash
-cd /Users/shivamtaneja/projects/clickhouse/schema-kings-clickathon
-
 docker compose exec -T clickhouse clickhouse-client \
   --user schema_kings \
   --password schema_kings \
   --query "
-SELECT database, name
-FROM system.tables
-WHERE database IN ('context', 'ops')
-ORDER BY database, name
+SELECT load_id, status, trace_id
+FROM ops.data_loads FINAL
+ORDER BY updated_at DESC
+LIMIT 5
 "
 ```
 
-Expected context/ops tables:
+Verify loaded table tracking:
+
+```bash
+docker compose exec -T clickhouse clickhouse-client \
+  --user schema_kings \
+  --password schema_kings \
+  --query "
+SELECT table_name, actual_rows, status
+FROM ops.data_load_tables FINAL
+WHERE load_id = (
+  SELECT load_id
+  FROM ops.data_loads FINAL
+  WHERE status = 'completed'
+  ORDER BY updated_at DESC
+  LIMIT 1
+)
+ORDER BY table_name
+"
+```
+
+Expected context/ops tables include:
 
 ```text
 context.context_documents
 context.contradictions
 context.fact_registry
 context.feature_registry
+ops.data_loads
+ops.data_load_tables
 ops.pipeline_runs
 ops.pipeline_stages
 ```
@@ -192,22 +210,17 @@ docker compose exec -T clickhouse clickhouse-client \
   --password schema_kings \
   --query 'SELECT 1'
 
-# 4. Load the 8 base Atlys tables.
-cd data
-CH='docker compose -f ../docker-compose.yml exec -T clickhouse clickhouse-client --user schema_kings --password schema_kings' \
-DB=schema_kings \
-./load.sh
-
-# 5. Bootstrap base context into ClickHouse context memory.
-cd ../backend
-pnpm cli context:bootstrap
-
-# 6. Start Langfuse.
-cd ..
+# 4. Start Langfuse before setup so setup is traced.
 docker compose --profile langfuse up -d
 
-# 7. Run one pipeline smoke test.
+# 5. If you used down -v, recreate/update Langfuse project keys in backend/.env
+# before this command if you want traces to appear in Langfuse.
+#
+# 6. Load base data and bootstrap context in one traced command.
 cd backend
+pnpm cli setup:local
+
+# 7. Run one pipeline smoke test.
 pnpm exec tsc --noEmit
 pnpm cli run ../specs/01_express_checkout
 ```
@@ -343,30 +356,13 @@ ORDER BY recorded_at
 
 For demo, point the same pipeline to ClickHouse Cloud.
 
-Load base data to Cloud:
-
-```bash
-cd /Users/shivamtaneja/projects/clickhouse/schema-kings-clickathon/data
-
-CH='clickhouse-client --host <cloud-host> --user <user> --password <password> --secure' \
-DB=atlys \
-./load.sh
-```
-
-Update `backend/.env`:
+Update `backend/.env` first:
 
 ```env
 CLICKHOUSE_URL=https://<cloud-host>:8443
 CLICKHOUSE_USER=<user>
 CLICKHOUSE_PASSWORD=<password>
 CLICKHOUSE_DATABASE=atlys
-```
-
-Bootstrap context into the target ClickHouse instance:
-
-```bash
-cd /Users/shivamtaneja/projects/clickhouse/schema-kings-clickathon/backend
-pnpm cli context:bootstrap
 ```
 
 Keep Langfuse either local or cloud-hosted:
@@ -380,6 +376,17 @@ or:
 ```env
 LANGFUSE_BASE_URL=https://cloud.langfuse.com
 ```
+
+Then run the same traced setup command against Cloud:
+
+```bash
+cd /Users/shivamtaneja/projects/clickhouse/schema-kings-clickathon/backend
+pnpm cli setup:local
+```
+
+Despite the command name, it uses `CLICKHOUSE_URL`, `CLICKHOUSE_USER`,
+`CLICKHOUSE_PASSWORD`, and `CLICKHOUSE_DATABASE`, so it can target local
+ClickHouse or ClickHouse Cloud.
 
 Before final demo, run:
 

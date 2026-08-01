@@ -2,6 +2,7 @@ import "dotenv/config";
 import path from "node:path";
 import { bootstrapContext } from "./pipeline/context.js";
 import { runPipeline } from "./pipeline/runPipeline.js";
+import { runLocalSetup } from "./pipeline/setupLocal.js";
 
 const [, , command, specFolder] = process.argv;
 
@@ -10,11 +11,13 @@ function printHelp() {
 Schema Kings CLI
 
 Usage:
+  pnpm cli setup:local
   pnpm cli context:bootstrap
   pnpm cli run <spec-folder>
   pnpm pipeline <spec-folder>
 
 Examples:
+  pnpm cli setup:local
   pnpm cli context:bootstrap
   pnpm cli run ../specs/05_instant_forex
   pnpm pipeline ../specs/01_express_checkout
@@ -38,6 +41,12 @@ async function main() {
     console.log("Context bootstrap completed.");
     console.log(`Features in context: ${registry.features.length}`);
     console.log(`Open contradictions: ${registry.contradictions.length}`);
+    return;
+  }
+
+  if (command === "setup:local") {
+    const repoRoot = path.resolve(process.cwd(), "..");
+    await runLocalSetup({ repoRoot });
     return;
   }
 

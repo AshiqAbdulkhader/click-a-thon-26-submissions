@@ -306,6 +306,7 @@ FORMAT TabSeparated
     await queryClickHouseText(`
 SELECT id, summary, evidence
 FROM context.contradictions
+FINAL
 WHERE status = 'open'
 ORDER BY id
 FORMAT TabSeparated

@@ -29,5 +29,11 @@ export function startLangfuse() {
 }
 
 export async function shutdownLangfuse() {
-  await langfuseSdk.shutdown();
+  try {
+    await langfuseSdk.shutdown();
+  } catch (error) {
+    console.warn(
+      `Langfuse shutdown/export failed; pipeline data was still written. Check LANGFUSE_* keys and host. ${error}`,
+    );
+  }
 }

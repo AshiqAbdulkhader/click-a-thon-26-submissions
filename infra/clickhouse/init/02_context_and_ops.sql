@@ -84,3 +84,31 @@ CREATE TABLE IF NOT EXISTS ops.pipeline_stages
 )
 ENGINE = MergeTree
 ORDER BY (job_id, stage_id, recorded_at);
+
+CREATE TABLE IF NOT EXISTS ops.data_loads
+(
+    load_id String,
+    load_type LowCardinality(String),
+    status LowCardinality(String),
+    trace_id String,
+    started_at DateTime64(3),
+    completed_at Nullable(DateTime64(3)),
+    summary_json String,
+    updated_at DateTime64(3) DEFAULT now64(3)
+)
+ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (load_id);
+
+CREATE TABLE IF NOT EXISTS ops.data_load_tables
+(
+    load_id String,
+    table_name String,
+    source_path String,
+    expected_rows Nullable(UInt64),
+    actual_rows UInt64,
+    status LowCardinality(String),
+    validation_json String,
+    loaded_at DateTime64(3) DEFAULT now64(3)
+)
+ENGINE = ReplacingMergeTree(loaded_at)
+ORDER BY (load_id, table_name);
