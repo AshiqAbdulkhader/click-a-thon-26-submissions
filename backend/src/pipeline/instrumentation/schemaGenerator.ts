@@ -133,19 +133,29 @@ export async function runSchemaGenerator(input: {
   });
 }
 
-type SchemaDesignSuggestion = {
+type SchemaColumnDraft = {
+  name: string;
+  type: string;
+  source_path: string | null;
+  reason: string;
+};
+
+type SchemaDesignDraft = {
+  table_name?: string;
+  engine?: string;
   order_by?: string[];
   partition_by?: string;
   ttl?: string;
-  column_type_overrides?: Array<{
-    column: string;
-    type: string;
-    reason: string;
-  }>;
+  columns?: SchemaColumnDraft[];
   materialized_view_recommendations?: Array<{
     purpose: string;
     dimensions?: string[];
     metrics?: string[];
+  }>;
+  context_assumptions?: Array<{
+    claim: string;
+    evidence: string;
+    trusted: boolean;
   }>;
   rationale?: string[];
 };
@@ -168,21 +178,24 @@ async function runSchemaDesignLoop(input: {
   context: ContextBundle;
 }): Promise<SchemaDesignLoop> {
   const iterations: SchemaDesignLoop["iterations"] = [];
-  let schemaPlan = buildSchemaPlan(input.manifest, input.eventProfile);
-  const suggestion = await requestSchemaDesignSuggestion(input);
+  const fallbackPlan = buildSchemaPlan(input.manifest, input.eventProfile);
+  let schemaPlan = fallbackPlan;
+  const draft = await requestSchemaDesignDraft(input);
 
-  if (suggestion) {
-    schemaPlan = applyDesignSuggestion(
-      schemaPlan,
-      suggestion,
-      input.eventProfile,
-    );
+  if (draft) {
+    schemaPlan = normalizeDesignDraft(draft, fallbackPlan, input.eventProfile);
     iterations.push({
       iteration: 1,
       actor: "schema_designer",
       summary:
-        "LLM schema designer proposed ClickHouse strategy updates from spec, profile, and context.",
-      issues: suggestion.rationale ?? [],
+        "LLM schema designer proposed a full ClickHouse schema plan from spec, profile, and context evidence.",
+      issues: [
+        ...(draft.rationale ?? []),
+        ...(draft.context_assumptions ?? []).map(
+          (assumption) =>
+            `${assumption.trusted ? "trusted" : "not_trusted"} context: ${assumption.claim} (${assumption.evidence})`,
+        ),
+      ],
     });
   } else {
     iterations.push({
@@ -230,20 +243,21 @@ async function runSchemaDesignLoop(input: {
   }
 
   return {
-    mode: suggestion ? "llm_assisted" : "deterministic_only",
+    mode: draft ? "llm_assisted" : "deterministic_only",
     iterations,
     final_plan: schemaPlan,
   };
 }
 
-async function requestSchemaDesignSuggestion(input: {
+async function requestSchemaDesignDraft(input: {
   featureSlug: string;
   manifest: FeatureManifest;
   eventProfile: EventProfile;
   context: ContextBundle;
-}): Promise<SchemaDesignSuggestion | null> {
+}): Promise<SchemaDesignDraft | null> {
   try {
-    return await callGroqJson<SchemaDesignSuggestion>({
+    return await callGroqJson<SchemaDesignDraft>({
+      strictJson: false,
       traceName: "groq.schema_design",
       traceInput: {
         task: "clickhouse_schema_design",
@@ -256,22 +270,26 @@ async function requestSchemaDesignSuggestion(input: {
         {
           role: "system",
           content:
-            "You are a ClickHouse instrumentation schema designer. Return only JSON. Suggest schema strategy changes, but do not invent raw fields.",
+            "You are a ClickHouse instrumentation schema designer. Return only JSON. Design from the spec and raw event evidence. Treat business context as useful but fallible; never trust context over raw event evidence.",
         },
         {
           role: "user",
           content: JSON.stringify({
-            task: "Review the deterministic draft inputs and suggest only safe ClickHouse schema strategy improvements.",
+            task: "Design the full Silver ClickHouse schema plan for this feature. Use the spec and event profile as source of truth. Use context only when supported by evidence, and explicitly mark context assumptions as trusted or not trusted.",
             allowed_shape: {
+              table_name: `${input.featureSlug}_events`,
+              engine: "ReplacingMergeTree",
               order_by: ["existing_column_name"],
               partition_by:
                 "ClickHouse partition expression, usually toYYYYMM(timestamp)",
               ttl: "ClickHouse TTL expression",
-              column_type_overrides: [
+              columns: [
                 {
-                  column: "existing_column_name",
+                  name: "snake_case_column_name",
                   type: "ClickHouse type",
-                  reason: "why this type is better",
+                  source_path:
+                    "raw JSON path from event_profile, or null only for pipeline columns",
+                  reason: "why this column belongs in the analytical schema",
                 },
               ],
               materialized_view_recommendations: [
@@ -281,18 +299,32 @@ async function requestSchemaDesignSuggestion(input: {
                   metrics: ["count | success_count | entity_count"],
                 },
               ],
+              context_assumptions: [
+                {
+                  claim: "context claim used or rejected",
+                  evidence: "spec/event/profile/context evidence",
+                  trusted: true,
+                },
+              ],
               rationale: ["short reasoning bullets"],
             },
             constraints: [
-              "Use only columns present in the event profile after flattening.",
+              "Every non-pipeline source_path must exist in event_profile.fields.",
+              "Include required pipeline columns: job_id, event_name, event_id, timestamp, raw_json, ingested_at.",
+              "event_name maps from raw path event; event_id maps from raw path id; timestamp maps from raw path timestamp.",
               "ORDER BY columns must be non-nullable.",
+              "ORDER BY must include timestamp and event_id.",
               "Keep raw_json for replay.",
               "Prefer LowCardinality(String) for repeated dimensions.",
+              "Use Nullable types for fields missing from some events or containing nulls.",
               "Suggest materialized views only for reusable aggregates.",
+              "Do not copy context errors into the schema. If context conflicts with event evidence, trust event evidence.",
             ],
             feature_manifest: input.manifest,
             event_profile: input.eventProfile,
             generated_context: input.context.generatedContext,
+            known_context_contradictions:
+              input.context.generatedContext.contradictions,
             base_context_excerpt: input.context.baseContext.slice(0, 6000),
           }),
         },
@@ -428,19 +460,141 @@ function buildSchemaPlan(
   };
 }
 
-function applyDesignSuggestion(
-  plan: SchemaPlan,
-  suggestion: SchemaDesignSuggestion,
+function normalizeDesignDraft(
+  draft: SchemaDesignDraft,
+  fallbackPlan: SchemaPlan,
   eventProfile: EventProfile,
 ): SchemaPlan {
-  const columns = plan.columns.map((column) => ({ ...column }));
-  const columnNames = new Set(columns.map((column) => column.name));
+  const allowedSourcePaths = new Set(
+    eventProfile.fields.map((field) => field.path),
+  );
+  const fallbackByName = new Map(
+    fallbackPlan.columns.map((column) => [column.name, column]),
+  );
+  const columns: SchemaPlan["columns"] = [];
+  const seenNames = new Set<string>();
+
+  for (const draftColumn of draft.columns ?? []) {
+    const name = toColumnName(draftColumn.name);
+    if (!name || seenNames.has(name)) {
+      continue;
+    }
+    const fallbackColumn = fallbackByName.get(name);
+    const sourcePath = normalizeSourcePath(name, draftColumn.source_path);
+    if (sourcePath && !allowedSourcePaths.has(sourcePath)) {
+      continue;
+    }
+    if (!sourcePath && !isPipelineColumn(name)) {
+      continue;
+    }
+
+    const field = sourcePath
+      ? eventProfile.fields.find((candidate) => candidate.path === sourcePath)
+      : null;
+    const fallbackType =
+      fallbackColumn?.type ?? typeForPipelineColumn(name) ?? "String";
+    const type = sanitizeColumnType(
+      draftColumn.type,
+      fallbackType,
+      field,
+      eventProfile.row_count,
+      name,
+    );
+
+    columns.push({
+      name,
+      type,
+      source_path: sourcePath,
+      reason:
+        draftColumn.reason ||
+        fallbackColumn?.reason ||
+        "Selected by schema designer and validated against event evidence.",
+    });
+    seenNames.add(name);
+  }
+
+  const mergedColumns = mergeColumns(columns, fallbackPlan.columns);
+  const columnNames = new Set(mergedColumns.map((column) => column.name));
   const nullableColumns = new Set(
-    columns
+    mergedColumns
       .filter((column) => column.type.startsWith("Nullable("))
       .map((column) => column.name),
   );
+  const orderBy = (draft.order_by ?? []).filter(
+    (column, index, all) =>
+      columnNames.has(column) &&
+      !nullableColumns.has(column) &&
+      all.indexOf(column) === index,
+  );
 
+  const partitionBy =
+    draft.partition_by === "toYYYYMM(timestamp)"
+      ? draft.partition_by
+      : fallbackPlan.partition_by;
+  const ttl =
+    draft.ttl && /^timestamp \+ INTERVAL \d+ MONTH$/.test(draft.ttl)
+      ? draft.ttl
+      : fallbackPlan.ttl;
+
+  return repairSchemaPlan(
+    {
+      database: "silver",
+      table_name:
+        draft.table_name === fallbackPlan.table_name
+          ? draft.table_name
+          : fallbackPlan.table_name,
+      engine:
+        draft.engine === "ReplacingMergeTree"
+          ? draft.engine
+          : fallbackPlan.engine,
+      partition_by: partitionBy,
+      ttl,
+      order_by: orderBy,
+      columns: mergedColumns,
+      materialized_views: buildMaterializedViewPlans(
+        fallbackPlan.table_name,
+        mergedColumns,
+      ),
+    },
+    null,
+    null,
+  );
+}
+
+function normalizeSourcePath(columnName: string, sourcePath: string | null) {
+  if (columnName === "event_name") {
+    return "event";
+  }
+  if (columnName === "event_id") {
+    return "id";
+  }
+  if (columnName === "timestamp") {
+    return "timestamp";
+  }
+  return sourcePath;
+}
+
+function isPipelineColumn(columnName: string) {
+  return ["job_id", "raw_json", "ingested_at"].includes(columnName);
+}
+
+function typeForPipelineColumn(columnName: string) {
+  if (columnName === "job_id" || columnName === "raw_json") {
+    return "String";
+  }
+  if (columnName === "ingested_at") {
+    return "DateTime DEFAULT now()";
+  }
+  return null;
+}
+
+function sanitizeColumnType(
+  requestedType: string,
+  fallbackType: string,
+  field: EventProfile["fields"][number] | null | undefined,
+  totalRows: number,
+  columnName: string,
+) {
   const allowedTypes = new Set([
     "String",
     "LowCardinality(String)",
@@ -462,65 +616,23 @@ function applyDesignSuggestion(
     "Nullable(Int64)",
     "Nullable(Float64)",
   ]);
-
-  for (const override of suggestion.column_type_overrides ?? []) {
-    if (!columnNames.has(override.column) || !allowedTypes.has(override.type)) {
-      continue;
-    }
-    const column = columns.find(
-      (candidate) => candidate.name === override.column,
-    );
-    const field = eventProfile.fields.find(
-      (candidate) => column?.source_path === candidate.path,
-    );
-    const sourceIsNullable =
-      field && (field.null_count > 0 || field.count < eventProfile.row_count);
-    if (sourceIsNullable && !override.type.startsWith("Nullable(")) {
-      continue;
-    }
-    if (
-      column &&
-      column.name !== "timestamp" &&
-      column.name !== "ingested_at"
-    ) {
-      column.type = override.type;
-      column.reason = `${column.reason} Schema designer override: ${override.reason}`;
-    }
+  if (!allowedTypes.has(requestedType)) {
+    return fallbackType;
   }
-
-  const suggestedOrderBy = (suggestion.order_by ?? []).filter(
-    (column, index, all) =>
-      columnNames.has(column) &&
-      !nullableColumns.has(column) &&
-      all.indexOf(column) === index,
-  );
-  const orderBy =
-    suggestedOrderBy.includes("timestamp") &&
-    suggestedOrderBy.includes("event_id")
-      ? suggestedOrderBy
-      : plan.order_by;
-
-  const partitionBy =
-    suggestion.partition_by === "toYYYYMM(timestamp)"
-      ? suggestion.partition_by
-      : plan.partition_by;
-  const ttl =
-    suggestion.ttl && /^timestamp \+ INTERVAL \d+ MONTH$/.test(suggestion.ttl)
-      ? suggestion.ttl
-      : plan.ttl;
-
-  return repairSchemaPlan(
-    {
-      ...plan,
-      partition_by: partitionBy,
-      ttl,
-      order_by: orderBy,
-      columns,
-      materialized_views: buildMaterializedViewPlans(plan.table_name, columns),
-    },
-    null,
-    null,
-  );
+  if (columnName === "timestamp") {
+    return "DateTime64(3)";
+  }
+  if (columnName === "ingested_at") {
+    return "DateTime DEFAULT now()";
+  }
+  const sourceIsNullable =
+    field && (field.null_count > 0 || field.count < totalRows);
+  if (sourceIsNullable && !requestedType.startsWith("Nullable(")) {
+    return fallbackType.startsWith("Nullable(")
+      ? fallbackType
+      : `Nullable(${fallbackType.replace("LowCardinality(String)", "String")})`;
+  }
+  return requestedType;
 }
 
 function reviewSchemaPlan(

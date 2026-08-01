@@ -12,7 +12,7 @@ Instrumentation does:
 - Persist raw spec/event data into Bronze ClickHouse tables.
 - Profile raw events.
 - Parse product semantics into a feature manifest.
-- Run a schema design feedback loop: draft, optional LLM design suggestion, deterministic guardrail review, repair.
+- Run a schema design feedback loop: LLM full-plan draft when available, deterministic fallback, guardrail review, repair.
 - Generate and review a Silver ClickHouse schema.
 - Define reusable materialized views / aggregations when useful.
 - Create/load the Silver table and materialized views.
@@ -22,7 +22,7 @@ Instrumentation does:
 Instrumentation does not:
 
 - Run PM-facing analytics.
-- Populate Gold tables.
+- Produce the full PM-facing Gold analytics layer.
 - Generate insights or recommendations.
 - Answer user questions.
 
@@ -38,8 +38,8 @@ spec folder
   -> 02 Event Profiler
   -> 03 Spec Parser
   -> 04 Schema Generator
-       -> deterministic draft
-       -> optional Groq schema design suggestion
+       -> Groq full schema plan draft when available
+       -> deterministic fallback when unavailable or invalid
        -> deterministic guardrail review
        -> deterministic repair when needed
        -> materialized view / aggregation plan
@@ -233,9 +233,10 @@ Input:
 
 What happens:
 
-- Builds a deterministic `silver.<feature_slug>_events` draft table plan from field evidence.
-- Optionally asks Groq for schema strategy suggestions using the manifest, event profile, and current context.
-- Applies only safe suggestions: existing columns only, valid ClickHouse types only, non-nullable `ORDER BY` columns only, and `event_id` retained for safe `ReplacingMergeTree` dedupe.
+- Asks Groq for a full schema plan using the manifest, event profile, and current context when a model is available.
+- Treats the event profile and spec as source of truth; context is supporting evidence because the base context can be wrong.
+- Falls back to a deterministic evidence-based schema plan when Groq is unavailable or returns invalid JSON.
+- Normalizes the LLM draft: existing raw paths only, allowed pipeline columns only, valid ClickHouse types only, nullable source fields stay nullable, non-nullable `ORDER BY` columns only, and `event_id` retained for safe `ReplacingMergeTree` dedupe.
 - Runs deterministic guardrails over the plan.
 - Repairs missing required columns, unmapped fields, invalid ordering keys, missing timestamp ordering, and unsafe dedupe keys before execution.
 - Adds standard analytical columns such as `job_id`, `event_name`, `event_id`, and `timestamp`.
