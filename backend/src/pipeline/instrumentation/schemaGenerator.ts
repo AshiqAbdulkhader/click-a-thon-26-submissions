@@ -908,11 +908,20 @@ function sanitizeColumnType(
   if (columnName === "timestamp") {
     return "DateTime64(3)";
   }
+  if (columnName === "event_name") {
+    return "LowCardinality(String)";
+  }
+  if (columnName === "event_id") {
+    return "String";
+  }
   if (columnName === "ingested_at") {
     return "DateTime DEFAULT now()";
   }
   const sourceIsNullable =
     field && (field.null_count > 0 || field.count < totalRows);
+  if (!sourceIsNullable && requestedType.startsWith("Nullable(")) {
+    return fallbackType;
+  }
   if (sourceIsNullable && !requestedType.startsWith("Nullable(")) {
     return fallbackType.startsWith("Nullable(")
       ? fallbackType
@@ -985,7 +994,10 @@ function repairSchemaPlan(
 ): SchemaPlan {
   const baseline =
     manifest && eventProfile ? buildSchemaPlan(manifest, eventProfile) : plan;
-  const columns = mergeColumns(plan.columns, baseline.columns);
+  const columns = canonicalizeKeyColumns(
+    mergeColumns(plan.columns, baseline.columns),
+    baseline.columns,
+  );
   const columnNames = new Set(columns.map((column) => column.name));
   const nullableColumns = new Set(
     columns
@@ -1011,6 +1023,41 @@ function repairSchemaPlan(
     columns,
     materialized_views: buildMaterializedViewPlans(plan.table_name, columns),
   };
+}
+
+function canonicalizeKeyColumns(
+  columns: SchemaPlan["columns"],
+  baselineColumns: SchemaPlan["columns"],
+) {
+  const baselineByName = new Map(
+    baselineColumns.map((column) => [column.name, column]),
+  );
+  const canonicalNames = new Set([
+    "job_id",
+    "event_name",
+    "event_id",
+    "timestamp",
+    "raw_json",
+    "ingested_at",
+    "user_id",
+    "application_id",
+  ]);
+  return columns.map((column) => {
+    const baselineColumn = baselineByName.get(column.name);
+    if (
+      baselineColumn &&
+      canonicalNames.has(column.name) &&
+      column.type.startsWith("Nullable(") &&
+      !baselineColumn.type.startsWith("Nullable(")
+    ) {
+      return {
+        ...column,
+        type: baselineColumn.type,
+        reason: `${column.reason} Canonicalized to non-nullable type because raw evidence has complete values.`,
+      };
+    }
+    return column;
+  });
 }
 
 function mergeColumns(
