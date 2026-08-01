@@ -12,7 +12,8 @@ export async function requestSchemaDesignDraft(
     executionFeedback?: string[];
   },
   relevantContext: RelevantContextBundle,
-): Promise<SchemaDesignDraft> {
+): Promise<SchemaDesignDraft | null> {
+  // Never abort instrumentation on LLM failure — caller falls back to evidence plan.
   try {
     const draft = await callGroqJson<SchemaDesignDraft>({
       modelRole: "schema",
@@ -90,21 +91,28 @@ export async function requestSchemaDesignDraft(
             ],
             execution_feedback: input.executionFeedback ?? [],
             feature_manifest: input.manifest,
-            event_profile: input.eventProfile,
-            relevant_context: relevantContext,
-            base_context_excerpt: input.context.baseContext.slice(0, 6000),
+            // Compact profile — huge payloads make 8b models emit non-JSON garbage.
+            event_profile: compactEventProfile(input.eventProfile),
+            relevant_context: {
+              similar_workflows: relevantContext.similar_workflows.slice(0, 5),
+              column_type_precedents:
+                relevantContext.column_type_precedents.slice(0, 40),
+              reusable_metrics: relevantContext.reusable_metrics.slice(0, 15),
+              recommended_joins: relevantContext.recommended_joins.slice(0, 15),
+              retrieval_notes: relevantContext.retrieval_notes,
+              contradictions: relevantContext.contradictions.slice(0, 8),
+            },
+            base_context_excerpt: input.context.baseContext.slice(0, 2500),
           }),
         },
       ],
     });
-    if (!draft || !Array.isArray(draft.columns)) {
-      throw new Error("Groq schema design returned no usable columns array.");
+    if (!draft || !Array.isArray(draft.columns) || draft.columns.length === 0) {
+      return null;
     }
     return draft;
-  } catch (error) {
-    throw new Error(
-      `Groq schema design failed; aborting pipeline: ${error instanceof Error ? error.message : String(error)}`,
-    );
+  } catch {
+    return null;
   }
 }
 
@@ -116,13 +124,13 @@ export async function requestSchemaCriticReview(input: {
   schemaPlan: SchemaPlan;
   relevantContext: RelevantContextBundle;
   deterministicIssues: string[];
-}): Promise<SchemaCriticDraft> {
+}): Promise<SchemaCriticDraft | null> {
   try {
     const review = await callGroqJson<SchemaCriticDraft>({
       modelRole: "critic",
       strictJson: false,
       temperature: 0,
-      maxTokens: 5000,
+      maxTokens: 2000,
       traceName: "groq.schema_critic",
       traceInput: {
         task: "clickhouse_schema_critic",
@@ -175,7 +183,7 @@ export async function requestSchemaCriticReview(input: {
       ],
     });
     if (!review || !["pass", "revise"].includes(String(review.verdict))) {
-      throw new Error("Groq schema critic returned no usable verdict.");
+      return null;
     }
     return {
       ...review,
@@ -183,10 +191,8 @@ export async function requestSchemaCriticReview(input: {
       revision_instructions: asStringArray(review.revision_instructions),
       rationale: asStringArray(review.rationale),
     };
-  } catch (error) {
-    throw new Error(
-      `Groq schema critic failed; aborting pipeline: ${error instanceof Error ? error.message : String(error)}`,
-    );
+  } catch {
+    return null;
   }
 }
 
@@ -246,10 +252,10 @@ export async function requestSchemaRevisionDraft(input: {
   currentPlan: SchemaPlan;
   criticReview: SchemaCriticDraft;
   relevantContext: RelevantContextBundle;
-}): Promise<SchemaDesignDraft> {
+}): Promise<SchemaDesignDraft | null> {
   try {
     const revision = await callGroqJson<SchemaDesignDraft>({
-      modelRole: "critic",
+      modelRole: "schema",
       strictJson: false,
       temperature: 0,
       maxTokens: 3500,
@@ -269,11 +275,17 @@ export async function requestSchemaRevisionDraft(input: {
           role: "user",
           content: JSON.stringify({
             task: "Revise the schema plan using critic feedback. Keep valid parts of the current plan, fix the issues, and return the same schema draft shape.",
-            current_schema_plan: input.currentPlan,
+            current_schema_plan: compactSchemaPlan(input.currentPlan),
             critic_review: input.criticReview,
             feature_manifest: input.manifest,
-            event_profile: input.eventProfile,
-            relevant_context: input.relevantContext,
+            event_profile: compactEventProfile(input.eventProfile),
+            relevant_context: {
+              retrieval_notes: input.relevantContext.retrieval_notes,
+              recommended_joins: input.relevantContext.recommended_joins.slice(
+                0,
+                10,
+              ),
+            },
             constraints: [
               "Return exactly one JSON object. No markdown.",
               "Every non-pipeline source_path must exist in event_profile.fields.",
@@ -286,13 +298,15 @@ export async function requestSchemaRevisionDraft(input: {
         },
       ],
     });
-    if (!revision || !Array.isArray(revision.columns)) {
-      throw new Error("Groq schema revision returned no usable columns array.");
+    if (
+      !revision ||
+      !Array.isArray(revision.columns) ||
+      revision.columns.length === 0
+    ) {
+      return null;
     }
     return revision;
-  } catch (error) {
-    throw new Error(
-      `Groq schema revision failed after schema critic requested changes; aborting pipeline: ${error instanceof Error ? error.message : String(error)}`,
-    );
+  } catch {
+    return null;
   }
 }

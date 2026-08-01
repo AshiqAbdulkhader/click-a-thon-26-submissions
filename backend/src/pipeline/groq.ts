@@ -122,15 +122,32 @@ export async function callGroqJson<T>(input: {
 }
 
 function parseJsonContent<T>(content: string): T {
+  const cleaned = stripCodeFences(content).trim();
   try {
-    return JSON.parse(content) as T;
+    return JSON.parse(cleaned) as T;
   } catch {
-    const extracted = extractFirstJsonObject(content);
+    const extracted = extractFirstJsonObject(cleaned);
     if (!extracted) {
       throw new Error("Groq returned content without a parseable JSON object.");
     }
-    return JSON.parse(extracted) as T;
+    try {
+      return JSON.parse(extracted) as T;
+    } catch {
+      // Last try: repair common trailing-comma / smart-quote noise lightly.
+      const repaired = extracted
+        .replace(/,\s*([}\]])/g, "$1")
+        .replace(/[“”]/g, '"')
+        .replace(/[‘’]/g, "'");
+      return JSON.parse(repaired) as T;
+    }
   }
+}
+
+function stripCodeFences(content: string) {
+  return content
+    .replace(/^```(?:json|JSON)?\s*/m, "")
+    .replace(/```\s*$/m, "")
+    .replace(/```(?:json|JSON)?\n([\s\S]*?)\n```/g, "$1");
 }
 
 function extractFirstJsonObject(content: string): string | null {

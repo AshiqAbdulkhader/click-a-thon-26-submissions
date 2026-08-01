@@ -46,7 +46,7 @@ export type SchemaCriticDraft = {
 };
 
 export type SchemaDesignLoop = {
-  mode: "llm_assisted";
+  mode: "llm_assisted" | "deterministic_fallback";
   iterations: Array<{
     iteration: number;
     actor:
