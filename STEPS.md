@@ -14,3 +14,8 @@ pnpm cli run ../specs/03_status_sharing
 pnpm cli run ../specs/04_abandoned_checkout_recovery
 pnpm cli run ../specs/05_instant_forex
 ```
+
+http://localhost:3000/
+http://localhost:8123/
+
+http://localhost:8787/
