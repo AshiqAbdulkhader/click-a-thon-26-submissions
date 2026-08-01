@@ -256,8 +256,10 @@ async function requestSchemaDesignDraft(input: {
   context: ContextBundle;
 }): Promise<SchemaDesignDraft | null> {
   try {
-    return await callGroqJson<SchemaDesignDraft>({
+    const draft = await callGroqJson<SchemaDesignDraft>({
       strictJson: false,
+      temperature: 0,
+      maxTokens: 3500,
       traceName: "groq.schema_design",
       traceInput: {
         task: "clickhouse_schema_design",
@@ -270,7 +272,7 @@ async function requestSchemaDesignDraft(input: {
         {
           role: "system",
           content:
-            "You are a ClickHouse instrumentation schema designer. Return only JSON. Design from the spec and raw event evidence. Treat business context as useful but fallible; never trust context over raw event evidence.",
+            "You are a ClickHouse instrumentation schema designer. Return exactly one JSON object and nothing else. Do not return null. The JSON object must include a columns array. Design from the spec and raw event evidence. Treat business context as useful but fallible; never trust context over raw event evidence.",
         },
         {
           role: "user",
@@ -309,6 +311,7 @@ async function requestSchemaDesignDraft(input: {
               rationale: ["short reasoning bullets"],
             },
             constraints: [
+              "Return exactly one JSON object. No markdown, no prose outside JSON, no null.",
               "Every non-pipeline source_path must exist in event_profile.fields.",
               "Include required pipeline columns: job_id, event_name, event_id, timestamp, raw_json, ingested_at.",
               "event_name maps from raw path event; event_id maps from raw path id; timestamp maps from raw path timestamp.",
@@ -330,6 +333,13 @@ async function requestSchemaDesignDraft(input: {
         },
       ],
     });
+    if (!draft || !Array.isArray(draft.columns)) {
+      console.warn(
+        "Groq schema design returned no usable columns array; using deterministic draft.",
+      );
+      return null;
+    }
+    return draft;
   } catch (error) {
     console.warn(
       `Groq schema design failed; using deterministic draft: ${error}`,
