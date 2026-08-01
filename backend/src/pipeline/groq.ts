@@ -14,6 +14,7 @@ type GroqChatCompletion = {
   choices?: Array<{
     message?: {
       content?: string;
+      reasoning?: string;
     };
   }>;
 };
@@ -89,7 +90,8 @@ export async function callGroqJson<T>(input: {
       }
 
       const completion = (await response.json()) as GroqChatCompletion;
-      const content = completion.choices?.[0]?.message?.content;
+      const message = completion.choices?.[0]?.message;
+      const content = message?.content || message?.reasoning;
       if (!content) {
         generation.update({
           output: { parsed: false, reason: "empty_completion" },

@@ -12,7 +12,7 @@ Instrumentation does:
 - Persist raw spec/event data into Bronze ClickHouse tables.
 - Profile raw events.
 - Parse product semantics into a feature manifest.
-- Run a schema design feedback loop: LLM full-plan draft when available, deterministic fallback, guardrail review, repair.
+- Run a schema design feedback loop: LLM full-plan draft, LLM schema critic, LLM revision when needed, deterministic fallback, guardrail review, repair.
 - Generate and review a Silver ClickHouse schema.
 - Define reusable materialized views / aggregations when useful.
 - Create/load the Silver table and materialized views.
@@ -39,6 +39,8 @@ spec folder
   -> 03 Spec Parser
   -> 04 Schema Generator
        -> Groq full schema plan draft when available
+       -> Groq schema critic review
+       -> Groq schema revision when critic requests changes
        -> deterministic fallback when unavailable or invalid
        -> deterministic guardrail review
        -> deterministic repair when needed
@@ -53,8 +55,10 @@ The important agent loop is:
 ```text
 observe raw spec/events + retrieve context
   -> reason about entities, workflow, schema, ordering, TTL, and aggregations
-  -> critique the plan with deterministic guardrails
-  -> repair the plan before execution
+  -> critique the plan with an LLM schema critic
+  -> revise with the schema designer when needed
+  -> validate with deterministic guardrails
+  -> repair unsafe output before execution
   -> act in ClickHouse
   -> remember the validated schema in context
 ```
@@ -234,6 +238,8 @@ Input:
 What happens:
 
 - Asks Groq for a full schema plan using the manifest, event profile, and current context when a model is available.
+- Asks a Groq schema critic to review whether the plan answers PM questions, handles context contradictions, and uses ClickHouse well.
+- Sends critic feedback back into a Groq schema revision round when the critic asks for changes.
 - Treats the event profile and spec as source of truth; context is supporting evidence because the base context can be wrong.
 - Falls back to a deterministic evidence-based schema plan when Groq is unavailable or returns invalid JSON.
 - Normalizes the LLM draft: existing raw paths only, allowed pipeline columns only, valid ClickHouse types only, nullable source fields stay nullable, non-nullable `ORDER BY` columns only, and `event_id` retained for safe `ReplacingMergeTree` dedupe.
