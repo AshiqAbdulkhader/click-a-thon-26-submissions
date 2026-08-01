@@ -19,6 +19,10 @@ export const analyticsTrackingEvents = {
     stageId: "08e_sql_generator",
     stageName: "SQL Generator",
   },
+  analyticsPrimitives: {
+    stageId: "08e2_analytics_primitives",
+    stageName: "Analytics Primitives",
+  },
   sqlGuardrail: {
     stageId: "08f_sql_guardrail",
     stageName: "SQL Guardrail",

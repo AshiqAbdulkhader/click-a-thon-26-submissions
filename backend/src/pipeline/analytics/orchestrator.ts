@@ -9,6 +9,7 @@ import { retrievePmContext } from "./contextRetriever.js";
 import { runEvidenceCritic } from "./evidenceCritic.js";
 import { runInsightSynthesizer } from "./insightSynthesizer.js";
 import { runPlanCritic } from "./planCritic.js";
+import { runAnalyticsPrimitives } from "./primitives.js";
 import { runQueryExecutor } from "./queryExecutor.js";
 import { runQueryUnderstanding } from "./queryUnderstanding.js";
 import { runResultEvaluator } from "./resultEvaluator.js";
@@ -107,9 +108,16 @@ export async function runAnalyticsAsk(input: {
             artifactRoot,
             executionFeedback: repairNotes,
           });
+          const primitiveQueries = await runAnalyticsPrimitives({
+            jobId,
+            intent,
+            context: pmContext,
+            plan: planReview.plan,
+            artifactRoot,
+          });
           const guardedQueries = await runSqlGuardrail({
             jobId,
-            queries: sqlQueries,
+            queries: mergeQueries(sqlQueries, primitiveQueries),
             artifactRoot,
           });
           const executed = await runQueryExecutor({
@@ -228,4 +236,15 @@ function createAskJobId(question: string) {
     .replace(/^_|_$/g, "")
     .slice(0, 48);
   return `${timestamp}_ask_${slug || "question"}`;
+}
+
+function mergeQueries<T extends { id: string }>(primary: T[], secondary: T[]) {
+  const seen = new Set<string>();
+  return [...primary, ...secondary].filter((query) => {
+    if (seen.has(query.id)) {
+      return false;
+    }
+    seen.add(query.id);
+    return true;
+  });
 }

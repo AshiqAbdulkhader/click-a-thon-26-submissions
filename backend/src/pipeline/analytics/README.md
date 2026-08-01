@@ -11,6 +11,7 @@ PM question
   -> 08c Analysis Planner
   -> 08d Plan Critic
   -> 08e SQL Generator
+  -> 08e2 Analytics Primitives
   -> 08f SQL Guardrail
   -> 09 Gold Query Executor
   -> 09b Result Evaluator
@@ -70,6 +71,7 @@ Deterministic stages:
 
 - `08b_pm_context_retrieval`: scores and retrieves generated context memory for the PM query.
 - `08d_plan_critic`: checks that the plan is usable before SQL generation.
+- `08e2_analytics_primitives`: adds broad reusable SQL primitives when context exposes the needed table/column shape.
 - `08f_sql_guardrail`: blocks mutating SQL, strips formatting, checks known tables, and records warnings.
 - `09_gold_query_executor`: executes approved ClickHouse queries and records every query.
 - `09b_result_evaluator`: checks whether results are empty, weak, missing required evidence, or need repair.
@@ -114,6 +116,7 @@ Every PM question produces three layers of tracking:
    - `08c_analysis_planner/analysis_plan.json`
    - `08d_plan_critic/plan_review.json`
    - `08e_sql_generator/sql_queries.json`
+   - `08e2_analytics_primitives/primitive_queries.json`
    - `08f_sql_guardrail/sql_guardrail.json`
    - `09_gold_query_executor/query_results.json`
    - `09b_result_evaluator/result_evaluation.json`
@@ -122,6 +125,32 @@ Every PM question produces three layers of tracking:
    - `ask_summary.json`
 
 This is the evidence trail judges should be able to inspect: what the system thought the PM asked, what context it used, what SQL it generated, which queries actually ran, what came back from ClickHouse, and how the final answer was constrained by evidence.
+
+## Analytics Primitives
+
+The harness is not limited to fixed agents, but it does include broad reusable primitives for the categories named in the problem statement. These are deterministic SQL templates generated only when the retrieved context exposes the required table and column shape.
+
+Current primitives:
+
+- **Event overview**: row count by event name.
+- **Data quality**: row count, unique events, entity coverage, event id uniqueness, and time range.
+- **Trend scan**: daily event trend by event name.
+- **Anomaly scan**: simple daily-volume z-score over available days.
+- **Funnel breakdown**: unique entities reaching each event, with success-event flag when context knows it.
+- **Segment comparison**: entity volume and success rate by a segment column such as device, OS, country, destination, or citizenship.
+- **Latency distribution**: p50/p90/p95 by event when latency-like columns exist.
+- **Correlation scan**: Pearson correlation between two numeric columns when available.
+
+These primitives do not replace dynamic SQL generation. The flow is:
+
+```text
+LLM planner/generator handles arbitrary PM intent
+  + deterministic primitives add reliable common analytical cuts
+  -> guardrails validate all SQL
+  -> ClickHouse executes only approved queries
+```
+
+This gives coverage for trends, anomalies, segment comparisons, correlations, funnel stages, and quality checks without pretending every possible PM question can be pre-modeled.
 
 ## Why This Is Not Fixed To A Few Agents
 
