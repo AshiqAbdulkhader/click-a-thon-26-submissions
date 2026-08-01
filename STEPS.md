@@ -8,8 +8,12 @@ docker compose up -d clickhouse
 docker compose --profile langfuse up -d
 
 cd backend
+
+// setup env first
 pnpm cli setup
 
+
+// clear artifacts
 pnpm cli run ../specs/01_express_checkout
 pnpm cli run ../specs/02_group_family
 pnpm cli run ../specs/03_status_sharing
