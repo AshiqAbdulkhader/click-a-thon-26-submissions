@@ -2,6 +2,7 @@ import "dotenv/config";
 import path from "node:path";
 import { runAnalyticsAsk } from "./pipeline/analytics.js";
 import { bootstrapContext } from "./pipeline/context.js";
+import { generatePipelineReport } from "./pipeline/report/index.js";
 import { runPipeline } from "./pipeline/runPipeline.js";
 import { runSetup } from "./pipeline/setup.js";
 
@@ -17,6 +18,8 @@ Usage:
   pnpm cli context:bootstrap
   pnpm cli run <spec-folder>
   pnpm cli ask <question>
+  pnpm cli report [job_id]
+  pnpm cli report --job <job_id>
   pnpm pipeline <spec-folder>
 
 Examples:
@@ -24,8 +27,31 @@ Examples:
   pnpm cli context:bootstrap
   pnpm cli run ../specs/05_instant_forex
   pnpm cli ask "Why is express checkout completion lower on iOS?"
+  pnpm cli report
+  pnpm cli report 20260801T210941
+  pnpm cli report --job 20260801T200608_01_express_checkout
   pnpm pipeline ../specs/01_express_checkout
 `);
+}
+
+function parseReportArgs(argv: string[]): { jobId?: string } {
+  let jobId: string | undefined;
+  for (let i = 0; i < argv.length; i += 1) {
+    const arg = argv[i];
+    if (arg === "--job") {
+      jobId = argv[i + 1];
+      i += 1;
+      continue;
+    }
+    if (arg.startsWith("--job=")) {
+      jobId = arg.slice("--job=".length);
+      continue;
+    }
+    if (!arg.startsWith("-") && !jobId) {
+      jobId = arg;
+    }
+  }
+  return { jobId };
 }
 
 async function main() {
@@ -98,6 +124,25 @@ async function main() {
     console.log("");
     console.log(`Artifacts: ${answer.artifact_root}`);
     console.log(`Langfuse trace ID: ${answer.trace_id}`);
+
+    const jobId = path.basename(answer.artifact_root);
+    const repoRoot = path.resolve(process.cwd(), "..");
+    try {
+      const { htmlPath } = await generatePipelineReport({
+        repoRoot,
+        jobId,
+      });
+      console.log("");
+      console.log(`HTML report (same answer): ${htmlPath}`);
+      console.log(`Re-open later: pnpm cli report ${jobId}`);
+    } catch (error) {
+      console.log("");
+      console.log(
+        `Report HTML skipped: ${error instanceof Error ? error.message : String(error)}`,
+      );
+      console.log(`Generate manually: pnpm cli report ${jobId}`);
+    }
+
     if (
       /temporarily unavailable|Strict analytics mode refused/i.test(
         `${answer.short_answer}\n${answer.caveats.join("\n")}`,
@@ -105,6 +150,34 @@ async function main() {
     ) {
       process.exitCode = 2;
     }
+    return;
+  }
+
+  if (command === "report") {
+    const { jobId } = parseReportArgs(args);
+    const repoRoot = path.resolve(process.cwd(), "..");
+    const { report, htmlPath, jsonPath } = await generatePipelineReport({
+      repoRoot,
+      jobId,
+    });
+    console.log("");
+    console.log(`Report: ${report.mode} — ${report.title}`);
+    if (report.job_id) {
+      console.log(`Focus job: ${report.job_id}`);
+      console.log(
+        report.mode === "ask"
+          ? "Single ask page (not the full overview)."
+          : "Single instrumentation page (not the full overview).",
+      );
+    } else {
+      console.log(
+        `Features: ${report.stats.features_instrumented} · runs: ${report.stats.instrumentation_runs} · asks: ${report.stats.ask_jobs}`,
+      );
+    }
+    console.log(`HTML: ${htmlPath}`);
+    console.log(`JSON: ${jsonPath}`);
+    console.log("");
+    console.log("Open the HTML in a browser.");
     return;
   }
 
