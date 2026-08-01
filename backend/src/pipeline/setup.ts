@@ -291,8 +291,10 @@ function defaultLoadCommand(repoRoot: string) {
   const config = getClickHouseConfig();
   const url = new URL(config.url);
 
+  // CH is expanded by load.sh via unquoted `$CH ...` (word-split, no second shell parse).
+  // Do NOT wrap password in quotes — they'd become part of the password value.
   if (["localhost", "127.0.0.1", "::1"].includes(url.hostname)) {
-    return `docker compose -f ${path.join(repoRoot, "docker-compose.yml")} exec -T clickhouse clickhouse-client --user ${config.user} --password ${shellQuote(config.password)}`;
+    return `docker compose -f ${path.join(repoRoot, "docker-compose.yml")} exec -T clickhouse clickhouse-client --user ${config.user} --password ${config.password}`;
   }
 
   // Homebrew / modern installs expose `clickhouse client`, not `clickhouse-client`.
@@ -301,11 +303,7 @@ function defaultLoadCommand(repoRoot: string) {
     process.env.CLICKHOUSE_NATIVE_PORT ??
     (url.port === "8443" ? "9440" : url.port || "");
   const port = nativePort ? ` --port ${nativePort}` : "";
-  return `clickhouse client --host ${url.hostname}${port} --user ${config.user} --password ${shellQuote(config.password)}${secure}`;
-}
-
-function shellQuote(value: string) {
-  return `'${value.replace(/'/g, `'\\''`)}'`;
+  return `clickhouse client --host ${url.hostname}${port} --user ${config.user} --password ${config.password}${secure}`;
 }
 
 function isTruthyEnv(value: string | undefined) {
