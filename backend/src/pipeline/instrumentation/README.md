@@ -4,6 +4,8 @@ This folder owns only the instrumentation agent flow: taking one feature spec pa
 
 The public entrypoint is `runInstrumentationAgent` in `orchestrator.ts`. The compatibility export used by the rest of the backend is `backend/src/pipeline/instrumentation.ts`.
 
+For the context and memory layer that feeds this agent and receives validated schema facts, see `backend/src/pipeline/context/CONTEXT.md`.
+
 ## Scope
 
 Instrumentation does:
