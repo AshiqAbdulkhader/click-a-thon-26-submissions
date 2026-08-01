@@ -50,3 +50,61 @@ The demo covers:
 ## Architecture
 
 See [`Architecture.md`](./Architecture.md) for the full 1–2 pager.
+
+## How to run it
+
+**Full setup + the one end-to-end command:** see [`RUN.md`](./RUN.md).
+
+### Supported platforms
+
+| Platform                                  | Local one-command (`./run-local.sh`) | Notes                                                |
+| ----------------------------------------- | ------------------------------------ | ---------------------------------------------------- |
+| **macOS**                                 | Supported                            | Primary path we develop on                           |
+| **Linux**                                 | Supported                            | Same bash + Docker Compose flow                      |
+| **Windows (WSL2)**                        | Supported                            | Run inside WSL + Docker Desktop with WSL integration |
+| **Windows (PowerShell / CMD / Git Bash)** | **Not supported**                    | Native Windows will not work — use WSL2              |
+
+This is **not** macOS-only. `brew …` lines below are macOS shortcuts; on Linux/WSL use the generic installers instead.
+
+`./run-local.sh` checks prerequisites up front (Docker running, Compose, Node 22+, pnpm, `.env` keys) and exits with a clear error if something is missing.
+
+After prerequisites and `backend/.env` are ready:
+
+```bash
+cd source_code
+./run-local.sh
+```
+
+### Prerequisites
+
+Install these before following `RUN.md`:
+
+| Tool                                           | Why                                              | Install                                                                                                                     |
+| ---------------------------------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
+| **Docker Desktop** (or Docker Engine on Linux) | Local ClickHouse + Langfuse via `docker compose` | [Docker Desktop](https://www.docker.com/products/docker-desktop/) (macOS / Windows) — open the app so the daemon is running |
+| **Node.js 22+**                                | Backend CLI / report server                      | [nodejs.org](https://nodejs.org/) · macOS also: `brew install node`                                                         |
+| **pnpm**                                       | Package manager for `source_code/backend`        | `npm install -g pnpm` · macOS also: `brew install pnpm`                                                                     |
+| **Groq API key**                               | LLM stages in all three agents                   | [console.groq.com](https://console.groq.com/)                                                                               |
+| **ClickHouse client** (Cloud only)             | One-time `data/load.sh` into ClickHouse Cloud    | **Not the same on every OS** — see below                                                                                    |
+| **Bash / WSL** (Windows)                       | `run-local.sh` and `load.sh` are bash            | [WSL](https://learn.microsoft.com/en-us/windows/wsl/install)                                                                |
+
+**ClickHouse client by OS**
+
+| OS      | Install                                                                                                         |
+| ------- | --------------------------------------------------------------------------------------------------------------- |
+| macOS   | `brew install clickhouse` — binary is `clickhouse` / `clickhouse client`                                        |
+| Linux   | `curl https://clickhouse.com/ \| sh` then `sudo ./clickhouse install`                                           |
+| Windows | No native `brew`. Use **WSL**, then install the Linux client inside WSL. Run `data/load.sh` from that WSL shell |
+
+Local Docker path does **not** need a host ClickHouse client — only Cloud `load.sh` does.
+
+Verify:
+
+```bash
+docker --version
+docker compose version
+node --version   # v22+ recommended
+pnpm --version
+```
+
+Then open [`RUN.md`](./RUN.md) and follow local (or Cloud) setup from `source_code/`.

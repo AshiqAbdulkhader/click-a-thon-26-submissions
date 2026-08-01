@@ -26,6 +26,16 @@ x-langfuse-env: &langfuse-env
   LANGFUSE_S3_MEDIA_UPLOAD_SECRET_ACCESS_KEY: ${LANGFUSE_MINIO_ROOT_PASSWORD:-miniosecret}
   LANGFUSE_S3_MEDIA_UPLOAD_ENDPOINT: http://langfuse-minio:9000
   LANGFUSE_S3_MEDIA_UPLOAD_FORCE_PATH_STYLE: "true"
+  # Headless seed — must match backend/.env.example local Langfuse keys (do not quote values).
+  LANGFUSE_INIT_ORG_ID: ${LANGFUSE_INIT_ORG_ID:-schema-kings-org}
+  LANGFUSE_INIT_ORG_NAME: ${LANGFUSE_INIT_ORG_NAME:-Schema Kings}
+  LANGFUSE_INIT_PROJECT_ID: ${LANGFUSE_INIT_PROJECT_ID:-schema-kings}
+  LANGFUSE_INIT_PROJECT_NAME: ${LANGFUSE_INIT_PROJECT_NAME:-Schema Kings Local}
+  LANGFUSE_INIT_PROJECT_PUBLIC_KEY: ${LANGFUSE_INIT_PROJECT_PUBLIC_KEY:-lf_pk_schema_kings_local}
+  LANGFUSE_INIT_PROJECT_SECRET_KEY: ${LANGFUSE_INIT_PROJECT_SECRET_KEY:-lf_sk_schema_kings_local_secret}
+  LANGFUSE_INIT_USER_EMAIL: ${LANGFUSE_INIT_USER_EMAIL:-local@schema-kings.dev}
+  LANGFUSE_INIT_USER_NAME: ${LANGFUSE_INIT_USER_NAME:-Local Dev}
+  LANGFUSE_INIT_USER_PASSWORD: ${LANGFUSE_INIT_USER_PASSWORD:-schemakingslocal}
 
 services:
   clickhouse:

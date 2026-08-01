@@ -287,14 +287,21 @@ async function runLoadScript(repoRoot: string) {
   });
 }
 
-function defaultLoadCommand(repoRoot: string) {
+function defaultLoadCommand(_repoRoot: string) {
   const config = getClickHouseConfig();
   const url = new URL(config.url);
 
-  // CH is expanded by load.sh via unquoted `$CH ...` (word-split, no second shell parse).
+  // Local: use the fixed container_name from docker-compose.yml.
+  // Do NOT use `docker compose -f <path>` — repo paths can contain spaces
+  // (e.g. "Query Kings") and load.sh cannot safely word-split those.
   // Do NOT wrap password in quotes — they'd become part of the password value.
   if (["localhost", "127.0.0.1", "::1"].includes(url.hostname)) {
-    return `docker compose -f ${path.join(repoRoot, "docker-compose.yml")} exec -T clickhouse clickhouse-client --user ${config.user} --password ${config.password}`;
+    const container =
+      process.env.CLICKHOUSE_DOCKER_CONTAINER?.trim() ||
+      "schema-kings-clickhouse";
+    // `-i` keeps stdin open so load.sh can pipe Parquet/SQL into clickhouse-client.
+    // Do not use `-T` here — that flag exists on `docker compose exec`, not `docker exec`.
+    return `docker exec -i ${container} clickhouse-client --user ${config.user} --password ${config.password}`;
   }
 
   // Homebrew / modern installs expose `clickhouse client`, not `clickhouse-client`.
