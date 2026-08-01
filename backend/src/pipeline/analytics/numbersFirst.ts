@@ -271,9 +271,21 @@ export function mergeWithNumbersFirst(
   }
 
   const llmEvasive =
-    /cannot be determined|no data|unavailable|not enough evidence|could not/i.test(
+    (/cannot be determined|no data|unavailable|not enough evidence|could not/i.test(
       llmDraft.short_answer,
-    ) && evidencePack.query_results.some((result) => result.row_count > 0);
+    ) &&
+      evidencePack.query_results.some((result) => result.row_count > 0)) ||
+    // Volume misread as 100% conversion, or prompt-injection style invent requests
+    (() => {
+      const blob = `${llmDraft.short_answer} ${llmDraft.key_findings.join(" ")}`;
+      if (
+        /100%\s+completion|\binvent\b|\bfabricate\b|ignore previous/i.test(blob)
+      ) {
+        return true;
+      }
+      const match = blob.match(/(\d+)\s+out of\s+(\d+)/i);
+      return Boolean(match && match[1] === match[2] && Number(match[1]) > 1);
+    })();
 
   if (llmEvasive || llmDraft.key_findings.length === 0) {
     return {

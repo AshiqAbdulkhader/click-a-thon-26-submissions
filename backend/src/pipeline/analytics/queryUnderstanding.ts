@@ -33,6 +33,39 @@ export async function runQueryUnderstanding(input: {
       metadata: { agent: "analytics_query_understanding" },
     });
 
+    // Refuse garbage / uninterpretable prompts without burning warehouse scan tokens.
+    if (isUninterpretableQuestion(input.question)) {
+      const intent: QueryIntent = {
+        original_question: input.question,
+        normalized_question: input.question.trim().toLowerCase(),
+        feature_hints: [],
+        metric_hints: [],
+        table_hints: [],
+        segment_hints: [],
+        time_hints: [],
+        requested_analyses: ["schema_explanation"],
+        ambiguity_notes: [
+          "UNINTERPRETABLE_QUESTION: prompt does not look like a product analytics question.",
+        ],
+      };
+      await writeStageJson(
+        input.artifactRoot,
+        event.stageId,
+        "intent.json",
+        intent,
+      );
+      await recordPipelineStage({
+        jobId: input.jobId,
+        stageId: event.stageId,
+        stageName: event.stageName,
+        status: "completed",
+        stageInput: { question: input.question },
+        stageOutput: intent,
+      });
+      span.update({ output: intent });
+      return intent;
+    }
+
     let llmIntent: QueryIntent | null = null;
     try {
       llmIntent = await callGroqJson<QueryIntent>({
@@ -172,6 +205,31 @@ function isValidIntentShape(intent: QueryIntent) {
     Array.isArray(intent.requested_analyses) &&
     Array.isArray(intent.ambiguity_notes)
   );
+}
+
+/** True for keyboard-smash / empty / non-analytics prompts. */
+export function isUninterpretableQuestion(question: string): boolean {
+  const raw = question.trim();
+  if (raw.length < 4) {
+    return true;
+  }
+  const alpha = raw.replace(/[^a-zA-Z\s]/g, " ").trim();
+  const words = alpha.split(/\s+/).filter((word) => word.length > 2);
+  if (words.length === 0) {
+    return true;
+  }
+  const analyticsSignal =
+    /\b(funnel|conversion|checkout|express|group|family|status|abandon|recovery|forex|purchase|destination|device|ios|android|coupon|revenue|drop|segment|metric|table|event|visa|feature|performance|summary|why|what|how|which|where|rate|latency|quality|uplift|baseline|compare|schengen|otp|payment)\b/i;
+  if (!analyticsSignal.test(raw) && words.length <= 6) {
+    return true;
+  }
+  // High symbol noise with almost no real words
+  const symbolRatio =
+    (raw.replace(/[a-zA-Z0-9\s]/g, "").length || 0) / Math.max(raw.length, 1);
+  if (symbolRatio > 0.35 && words.length < 4) {
+    return true;
+  }
+  return false;
 }
 
 function deterministicIntent(question: string): QueryIntent {

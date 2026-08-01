@@ -75,6 +75,106 @@ export async function runAnalyticsAsk(input: {
             question: input.question,
             artifactRoot,
           });
+
+          // Short-circuit uninterpretable prompts — no multi-stage warehouse blast.
+          if (
+            intent.ambiguity_notes.some((note) =>
+              note.startsWith("UNINTERPRETABLE_QUESTION"),
+            )
+          ) {
+            const draft = {
+              short_answer:
+                "I could not interpret that as a product analytics question. Please ask about a feature, funnel, segment, metric, or table.",
+              key_findings: [
+                "The prompt did not contain enough analytics intent to plan safe ClickHouse queries.",
+              ],
+              evidence: [],
+              recommended_actions: [
+                "Rephrase with a feature name (e.g. express checkout) or base funnel step.",
+                "Ask for funnel drop-off, segment comparison, data quality, or available tables/metrics.",
+              ],
+              caveats: intent.ambiguity_notes,
+            };
+            const finalAnswer = await runEvidenceCritic({
+              jobId,
+              draft,
+              evidencePack: {
+                question: input.question,
+                intent,
+                context: {
+                  features: [],
+                  workflows: [],
+                  columns: [],
+                  metrics: [],
+                  joins: [],
+                  schema_quality: [],
+                  contradictions: [],
+                  base_context_excerpt: "",
+                  retrieval_notes: intent.ambiguity_notes,
+                },
+                plan: {
+                  interpreted_question: input.question,
+                  answer_type: "schema_explanation",
+                  tables: [],
+                  joins: [],
+                  queries: [],
+                  evidence_standard: {
+                    needs_comparison: false,
+                    needs_segment_cut: false,
+                    min_rows: 1,
+                    can_answer_if_empty: true,
+                  },
+                  assumptions: [],
+                  risks: [],
+                },
+                query_results: [],
+                evaluation: {
+                  passed: true,
+                  needs_repair: false,
+                  repair_notes: [],
+                  evidence_gaps: [],
+                },
+              },
+              artifactRoot,
+              traceId,
+            });
+            await writeFile(
+              path.join(artifactRoot, "ask_summary.json"),
+              `${JSON.stringify(
+                {
+                  job_id: jobId,
+                  question: input.question,
+                  status: "uninterpretable",
+                  answer: finalAnswer.short_answer,
+                  artifact_root: artifactRoot,
+                  langfuse_trace_id: traceId,
+                },
+                null,
+                2,
+              )}\n`,
+            );
+            await recordPipelineRun({
+              jobId,
+              featureSlug,
+              specFolder: "ask",
+              status: "completed",
+              traceId,
+              startedAt,
+              completedAt: new Date().toISOString(),
+              summary: {
+                question: input.question,
+                status: "uninterpretable",
+              },
+            });
+            rootSpan.update({
+              output: {
+                status: "uninterpretable",
+                answer: finalAnswer.short_answer,
+              },
+            });
+            return finalAnswer;
+          }
+
           const pmContext = await retrievePmContext({
             jobId,
             question: input.question,

@@ -444,19 +444,53 @@ LIMIT 60`,
       requested.has("root_cause") ||
       requested.has("open_ended"))
   ) {
+    // Single-dimension rollups first — avoids cherry-picking tiny multi-dim cells.
+    for (const dimension of [
+      "device_type",
+      "os",
+      "geoip_country_code",
+      "destination",
+    ]) {
+      queries.push({
+        id: idFor(
+          `primitive_gold_segment_by_${dimension}`,
+          gold.segmentSuccess,
+        ),
+        purpose: `Segment success by ${dimension} from Gold ${gold.segmentSuccess}.`,
+        sql_intent: `Roll up entities/success by ${dimension} only.`,
+        expected_columns: [
+          dimension,
+          "entities",
+          "success_entities",
+          "success_rate",
+        ],
+        priority: "required",
+        sql: `
+SELECT
+  ${dimension},
+  sum(entities) AS entities,
+  sum(success_entities) AS success_entities,
+  if(sum(entities) = 0, 0, sum(success_entities) / sum(entities)) AS success_rate
+FROM ${gold.segmentSuccess}
+GROUP BY ${dimension}
+ORDER BY entities DESC
+LIMIT 50`,
+      });
+    }
     queries.push({
       id: idFor("primitive_gold_segment_success", gold.segmentSuccess),
-      purpose: `Segment success rates from Gold ${gold.segmentSuccess}.`,
-      sql_intent: "Read pre-aggregated segment success entities from Gold.",
+      purpose: `Detailed multi-dimension segment success from Gold ${gold.segmentSuccess}.`,
+      sql_intent:
+        "Read pre-aggregated multi-dimension segment success from Gold.",
       expected_columns: ["entities", "success_entities", "success_rate"],
-      priority: "required",
+      priority: "nice_to_have",
       sql: `
 SELECT
   *,
   if(entities = 0, 0, success_entities / entities) AS success_rate
 FROM ${gold.segmentSuccess}
 ORDER BY entities DESC
-LIMIT 100`,
+LIMIT 50`,
     });
     covered.add("segment");
   }

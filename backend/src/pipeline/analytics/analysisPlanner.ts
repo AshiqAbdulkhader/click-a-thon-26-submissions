@@ -105,10 +105,14 @@ Rules:
     }
 
     if (llmPlan && !isValidPlanShape(llmPlan)) {
-      throw new AnalyticsStrictFailure(
-        event.stageId,
-        "Analysis planner returned an unusable plan shape.",
-      );
+      // Don't kill the ask — fall through to grounded deterministic plan.
+      span.update({
+        metadata: {
+          llm_plan_invalid: true,
+          note: "Unusable LLM plan shape; using grounded fallback plan.",
+        },
+      });
+      llmPlan = null;
     }
 
     // Grounded deterministic plan is allowed (from context catalog), not invented metrics.
@@ -397,22 +401,85 @@ function pickMatchedFeature(intent: QueryIntent, context: PmRelevantContext) {
     context.features.find((feature) => {
       const slug = feature.feature_slug.toLowerCase();
       const spaced = slug.replace(/_/g, " ");
+      const tokens = slug.split("_").filter((token) => token.length > 2);
       return (
         haystack.includes(slug) ||
         haystack.includes(spaced) ||
-        intent.feature_hints.some((hint) =>
-          slug.includes(hint.toLowerCase().replace(/[^a-z0-9]+/g, "_")),
-        )
+        tokens.some((token) => haystack.includes(token)) ||
+        intent.feature_hints.some((hint) => {
+          const normalized = hint.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+          return (
+            slug.includes(normalized) ||
+            normalized.includes(slug) ||
+            spaced.includes(hint.toLowerCase())
+          );
+        })
       );
     }) ?? null
   );
 }
 
+/**
+ * True only when the user is clearly asking about a named product feature
+ * that might be missing — not base-funnel / metric / geo questions.
+ */
 function looksLikeNamedFeatureQuestion(question: string, intent: QueryIntent) {
-  if (intent.feature_hints.length > 0) {
+  if (isBaseWarehouseQuestion(question, intent)) {
+    return false;
+  }
+
+  if (
+    /\b(feature called|feature named|new feature|unreleased|concierge|yacht|luxury)\b/i.test(
+      question,
+    )
+  ) {
     return true;
   }
-  return /\b(feature|concierge|module|product)\b/i.test(question);
+
+  const metricNoise = new Set([
+    "conversion",
+    "funnel",
+    "drop",
+    "dropoff",
+    "rate",
+    "revenue",
+    "purchase",
+    "performance",
+    "overall",
+    "baseline",
+    "uplift",
+    "summary",
+    "quality",
+    "segment",
+    "device",
+    "ios",
+    "android",
+    "coupon",
+    "currency",
+    "value",
+    "metric",
+    "table",
+    "event",
+  ]);
+  const productHints = intent.feature_hints.filter((hint) => {
+    const token = hint.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+    if (!token || token.length < 3) {
+      return false;
+    }
+    if (metricNoise.has(token) || metricNoise.has(token.replace(/_/g, ""))) {
+      return false;
+    }
+    return true;
+  });
+
+  return productHints.length > 0;
+}
+
+function isBaseWarehouseQuestion(question: string, intent: QueryIntent) {
+  const text = `${question} ${intent.table_hints.join(" ")} ${intent.metric_hints.join(" ")}`;
+  return /destination_card|application_started|document_uploaded|purchase_completed|pay_now|pre-?purchase|overall conversion|base funnel|conversion funnel from|card click|schengen|geoip|coupon_applied|visa_issuance_eta|eta_shown|on-?time delivery/i.test(
+    text,
+  );
 }
 
 function uniqueJoins(joins: AnalysisPlan["joins"]): AnalysisPlan["joins"] {

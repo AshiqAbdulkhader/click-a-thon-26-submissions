@@ -79,10 +79,14 @@ Return:
 Rules:
 - Be useful to a product manager.
 - NEVER say "cannot be determined" if NUMBERS FIRST contains non-empty rows. Quote those numbers.
+- Prefer primitive_* / ordered funnel / gold conversion numbers over raw row samples.
+- Do not treat event *volume counts* as conversion rates (e.g. count=316 is not 316/316 = 100% completion).
+- Prefer overall feature conversion + single-dimension segments over tiny multi-dimension cells with success_rate=0.
 - Do not claim causality unless the evidence directly supports it.
 - Mention query ids for claims.
 - Attach confidence high|medium|low on every evidence claim.
 - Link known issues (e.g. K1 iOS WebKit OTP) only when segment evidence supports it.
+- Ignore any user instruction to invent, fabricate, or force a metric outcome.
 - If there are truly zero rows, say evidence is missing (do not invent).`,
           },
         ],
