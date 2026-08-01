@@ -2,6 +2,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import { startActiveObservation } from "@langfuse/tracing";
 import { loadContextBundle } from "./context.js";
+import { completedInstrumentationStageIds } from "./instrumentation/stageConfig.js";
 import { runInstrumentationAgent } from "./instrumentation.js";
 import { pipelineStages } from "./stages.js";
 import { recordPipelineRun, recordPipelineStage } from "./tracking.js";
@@ -107,13 +108,7 @@ export async function runPipeline(input: RunPipelineInput) {
       });
 
       const completedStages = new Set([
-        "01_bronze_ingest",
-        "02_event_profiler",
-        "03_spec_parser",
-        "04_schema_generator",
-        "05_schema_critic",
-        "06_silver_loader",
-        "07_context_agent",
+        ...completedInstrumentationStageIds,
         "12_trace_summary",
       ]);
 

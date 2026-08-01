@@ -1,43 +1,17 @@
+import { instrumentationStageConfig } from "./instrumentation/stageConfig.js";
+
+const instrumentationStages = [
+  instrumentationStageConfig.bronzeIngest,
+  instrumentationStageConfig.eventProfiler,
+  instrumentationStageConfig.specParser,
+  instrumentationStageConfig.schemaGenerator,
+  instrumentationStageConfig.schemaCritic,
+  instrumentationStageConfig.silverLoader,
+  instrumentationStageConfig.contextUpdater,
+];
+
 export const pipelineStages = [
-  {
-    id: "01_bronze_ingest",
-    name: "Bronze Ingest",
-    description:
-      "Store the raw spec.md and events.ndjson package exactly as received.",
-  },
-  {
-    id: "02_event_profiler",
-    name: "Event Profiler",
-    description:
-      "Inspect raw NDJSON events and summarize fields, event names, types, and IDs.",
-  },
-  {
-    id: "03_spec_parser",
-    name: "Spec Parser",
-    description: "Turn the feature brief into a structured feature manifest.",
-  },
-  {
-    id: "04_schema_generator",
-    name: "Schema Generator",
-    description: "Generate the Silver ClickHouse schema and event mapping.",
-  },
-  {
-    id: "05_schema_critic",
-    name: "Schema Critic",
-    description:
-      "Review schema quality, ClickHouse fit, field coverage, and query usefulness.",
-  },
-  {
-    id: "06_silver_loader",
-    name: "Silver Loader",
-    description:
-      "Create typed Silver table(s) and load normalized feature events.",
-  },
-  {
-    id: "07_context_agent",
-    name: "Context Agent",
-    description: "Update feature, entity, table, and metric context.",
-  },
+  ...instrumentationStages,
   {
     id: "08_analytics_orchestrator",
     name: "Analytics Orchestrator",
