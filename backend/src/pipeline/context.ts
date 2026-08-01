@@ -148,54 +148,50 @@ export async function updateGeneratedContext(input: {
   event_profile: EventProfile;
 }) {
   await ensureContextTables();
-  await executeClickHouse(`INSERT INTO context.feature_registry FORMAT JSONEachRow
-${JSON.stringify({
-  feature_slug: input.feature_slug,
-  job_id: input.job_id,
-  table_name: input.table_name,
-  primary_entity: input.primary_entity,
-  workflow_type: input.workflow_type,
-  event_names_json: JSON.stringify(input.event_names),
-  success_event: input.success_event ?? "",
-  metric_hints_json: JSON.stringify(input.metric_hints),
-  validation_json: JSON.stringify(input.validation),
-})}
-`);
+  await insertJsonRows("context.feature_registry", [
+    {
+      feature_slug: input.feature_slug,
+      job_id: input.job_id,
+      table_name: input.table_name,
+      primary_entity: input.primary_entity,
+      workflow_type: input.workflow_type,
+      event_names_json: JSON.stringify(input.event_names),
+      success_event: input.success_event ?? "",
+      metric_hints_json: JSON.stringify(input.metric_hints),
+      validation_json: JSON.stringify(input.validation),
+    },
+  ]);
 
-  await executeClickHouse(`INSERT INTO context.fact_registry FORMAT JSONEachRow
-${[
-  {
-    fact_id: `feature:${input.feature_slug}:uses_table`,
-    fact_type: "feature",
-    subject: input.feature_slug,
-    predicate: "uses_table",
-    object: input.table_name,
-    confidence: 1,
-    evidence_json: JSON.stringify([
-      "feature_manifest.json",
-      "schema_plan.json",
-      "load_report.json validation passed",
-    ]),
-    source_job_id: input.job_id,
-  },
-  {
-    fact_id: `entity:${input.feature_slug}:primary_entity`,
-    fact_type: "entity",
-    subject: input.feature_slug,
-    predicate: "primary_entity",
-    object: input.primary_entity,
-    confidence: 1,
-    evidence_json: JSON.stringify([
-      "feature_manifest.json",
-      "event_profile.json",
-      "load_report.json validation passed",
-    ]),
-    source_job_id: input.job_id,
-  },
-]
-  .map((row) => JSON.stringify(row))
-  .join("\n")}
-`);
+  await insertJsonRows("context.fact_registry", [
+    {
+      fact_id: `feature:${input.feature_slug}:uses_table`,
+      fact_type: "feature",
+      subject: input.feature_slug,
+      predicate: "uses_table",
+      object: input.table_name,
+      confidence: 1,
+      evidence_json: JSON.stringify([
+        "feature_manifest.json",
+        "schema_plan.json",
+        "load_report.json validation passed",
+      ]),
+      source_job_id: input.job_id,
+    },
+    {
+      fact_id: `entity:${input.feature_slug}:primary_entity`,
+      fact_type: "entity",
+      subject: input.feature_slug,
+      predicate: "primary_entity",
+      object: input.primary_entity,
+      confidence: 1,
+      evidence_json: JSON.stringify([
+        "feature_manifest.json",
+        "event_profile.json",
+        "load_report.json validation passed",
+      ]),
+      source_job_id: input.job_id,
+    },
+  ]);
 
   await writeSchemaMemory(input);
 
@@ -549,20 +545,15 @@ async function ingestBaseContextDocuments(input: {
     },
   ];
 
-  await executeClickHouse(`INSERT INTO context.context_documents FORMAT JSONEachRow
-${rows.map((row) => JSON.stringify(row)).join("\n")}
-`);
+  await insertJsonRows("context.context_documents", rows);
 
-  await executeClickHouse(`INSERT INTO context.contradictions FORMAT JSONEachRow
-${emptyRegistry.contradictions
-  .map((contradiction) =>
-    JSON.stringify({
+  await insertJsonRows(
+    "context.contradictions",
+    emptyRegistry.contradictions.map((contradiction) => ({
       ...contradiction,
       status: "open",
-    }),
-  )
-  .join("\n")}
-`);
+    })),
+  );
 
   await writeBaseSchemaMemory({
     jobId: input.jobId,

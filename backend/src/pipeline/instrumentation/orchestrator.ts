@@ -9,9 +9,28 @@ import { runSchemaGenerator } from "./schemaGenerator.js";
 import { runSilverLoader } from "./silverLoader.js";
 import { runSpecParser } from "./specParser.js";
 import { writeStageJson } from "./artifacts.js";
-import { MappingPlan, SchemaPlan, SilverLoadReport } from "./types.js";
+import {
+  EventProfile,
+  FeatureManifest,
+  MappingPlan,
+  SchemaPlan,
+  SilverLoadReport,
+} from "./types.js";
 
 const MAX_SCHEMA_LOAD_ATTEMPTS = 2;
+
+type RepairAttempt = {
+  attempt: number;
+  status: "failed" | "completed";
+  feedback: string[];
+};
+
+type SchemaLoadResult = {
+  schemaPlan: SchemaPlan;
+  schemaSql: string;
+  mappingPlan: MappingPlan;
+  loadReport: SilverLoadReport;
+};
 
 export async function runInstrumentationAgent(input: {
   repoRoot: string;
@@ -49,94 +68,16 @@ export async function runInstrumentationAgent(input: {
     artifactRoot: input.artifactRoot,
   });
 
-  let schemaPlan: SchemaPlan | null = null;
-  let schemaSql = "";
-  let mappingPlan: MappingPlan | null = null;
-  let loadReport: SilverLoadReport | null = null;
-  let executionFeedback: string[] = [];
-  const repairAttempts: Array<{
-    attempt: number;
-    status: "failed" | "completed";
-    feedback: string[];
-  }> = [];
-
-  for (let attempt = 1; attempt <= MAX_SCHEMA_LOAD_ATTEMPTS; attempt += 1) {
-    const generated = await runSchemaGenerator({
+  const { schemaPlan, schemaSql, mappingPlan, loadReport } =
+    await runSchemaLoadRepairLoop({
       jobId: input.jobId,
       featureSlug,
       manifest,
       eventProfile,
       context: input.context,
-      artifactRoot: input.artifactRoot,
-      executionFeedback,
-    });
-    schemaPlan = generated.schemaPlan;
-    schemaSql = generated.schemaSql;
-    mappingPlan = generated.mappingPlan;
-
-    const schemaReview = await runSchemaCritic({
-      jobId: input.jobId,
-      schemaPlan,
-      eventProfile,
-      manifest,
+      rawEvents: bronze.rawEvents,
       artifactRoot: input.artifactRoot,
     });
-
-    if (schemaReview.warnings.length > 0) {
-      executionFeedback = [
-        `Schema critic blocked attempt ${attempt}: ${schemaReview.warnings.join("; ")}`,
-      ];
-      repairAttempts.push({
-        attempt,
-        status: "failed",
-        feedback: executionFeedback,
-      });
-      if (attempt < MAX_SCHEMA_LOAD_ATTEMPTS) {
-        continue;
-      }
-      await writeRepairLoopArtifact(input.artifactRoot, repairAttempts);
-      throw new Error(executionFeedback[0]);
-    }
-
-    try {
-      loadReport = await runSilverLoader({
-        jobId: input.jobId,
-        schemaPlan,
-        schemaSql,
-        eventProfile,
-        manifest,
-        rawEvents: bronze.rawEvents,
-        artifactRoot: input.artifactRoot,
-      });
-      repairAttempts.push({
-        attempt,
-        status: "completed",
-        feedback: [],
-      });
-      break;
-    } catch (error) {
-      executionFeedback = [
-        `Silver load or validation failed on attempt ${attempt}: ${error instanceof Error ? error.message : String(error)}`,
-      ];
-      repairAttempts.push({
-        attempt,
-        status: "failed",
-        feedback: executionFeedback,
-      });
-      if (attempt >= MAX_SCHEMA_LOAD_ATTEMPTS) {
-        await writeRepairLoopArtifact(input.artifactRoot, repairAttempts);
-        throw error;
-      }
-    }
-  }
-
-  await writeRepairLoopArtifact(input.artifactRoot, repairAttempts);
-
-  if (!schemaPlan || !mappingPlan || !loadReport) {
-    throw new Error(
-      "Instrumentation repair loop ended without a loaded schema.",
-    );
-  }
 
   await runContextUpdater({
     jobId: input.jobId,
@@ -159,13 +100,93 @@ export async function runInstrumentationAgent(input: {
   };
 }
 
+async function runSchemaLoadRepairLoop(input: {
+  jobId: string;
+  featureSlug: string;
+  manifest: FeatureManifest;
+  eventProfile: EventProfile;
+  context: ContextBundle;
+  rawEvents: Record<string, unknown>[];
+  artifactRoot: string;
+}): Promise<SchemaLoadResult> {
+  let executionFeedback: string[] = [];
+  const repairAttempts: RepairAttempt[] = [];
+
+  for (let attempt = 1; attempt <= MAX_SCHEMA_LOAD_ATTEMPTS; attempt += 1) {
+    const generated = await runSchemaGenerator({
+      jobId: input.jobId,
+      featureSlug: input.featureSlug,
+      manifest: input.manifest,
+      eventProfile: input.eventProfile,
+      context: input.context,
+      artifactRoot: input.artifactRoot,
+      executionFeedback,
+    });
+
+    const schemaReview = await runSchemaCritic({
+      jobId: input.jobId,
+      schemaPlan: generated.schemaPlan,
+      eventProfile: input.eventProfile,
+      manifest: input.manifest,
+      artifactRoot: input.artifactRoot,
+    });
+
+    if (schemaReview.warnings.length > 0) {
+      executionFeedback = [
+        `Schema critic blocked attempt ${attempt}: ${schemaReview.warnings.join("; ")}`,
+      ];
+      repairAttempts.push(failedAttempt(attempt, executionFeedback));
+      if (attempt < MAX_SCHEMA_LOAD_ATTEMPTS) {
+        continue;
+      }
+      await writeRepairLoopArtifact(input.artifactRoot, repairAttempts);
+      throw new Error(executionFeedback[0]);
+    }
+
+    try {
+      const loadReport = await runSilverLoader({
+        jobId: input.jobId,
+        schemaPlan: generated.schemaPlan,
+        schemaSql: generated.schemaSql,
+        eventProfile: input.eventProfile,
+        manifest: input.manifest,
+        rawEvents: input.rawEvents,
+        artifactRoot: input.artifactRoot,
+      });
+      repairAttempts.push({
+        attempt,
+        status: "completed",
+        feedback: [],
+      });
+      await writeRepairLoopArtifact(input.artifactRoot, repairAttempts);
+      return { ...generated, loadReport };
+    } catch (error) {
+      executionFeedback = [
+        `Silver load or validation failed on attempt ${attempt}: ${error instanceof Error ? error.message : String(error)}`,
+      ];
+      repairAttempts.push(failedAttempt(attempt, executionFeedback));
+      if (attempt >= MAX_SCHEMA_LOAD_ATTEMPTS) {
+        await writeRepairLoopArtifact(input.artifactRoot, repairAttempts);
+        throw error;
+      }
+    }
+  }
+
+  await writeRepairLoopArtifact(input.artifactRoot, repairAttempts);
+  throw new Error("Instrumentation repair loop ended without a loaded schema.");
+}
+
+function failedAttempt(attempt: number, feedback: string[]): RepairAttempt {
+  return {
+    attempt,
+    status: "failed",
+    feedback,
+  };
+}
+
 async function writeRepairLoopArtifact(
   artifactRoot: string,
-  attempts: Array<{
-    attempt: number;
-    status: "failed" | "completed";
-    feedback: string[];
-  }>,
+  attempts: RepairAttempt[],
 ) {
   await writeStageJson(
     artifactRoot,
