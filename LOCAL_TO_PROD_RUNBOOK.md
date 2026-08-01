@@ -3,7 +3,7 @@
 This is the command checklist for running everything locally first, then switching
 the same flow to ClickHouse Cloud before the demo.
 
-## Local Reset
+## Start Clean Locally
 
 From the repo root:
 
@@ -11,10 +11,18 @@ From the repo root:
 cd /Users/shivamtaneja/projects/clickhouse/schema-kings-clickathon
 ```
 
-Stop local services and delete only this project's Docker volumes:
+This deletes only this project's local Docker state. It does not delete source
+files, specs, Parquet data, or code.
 
 ```bash
 docker compose --profile langfuse down -v
+```
+
+Optional: clear regenerated local run artifacts. These are ignored by git and
+can always be recreated by running the pipeline again.
+
+```bash
+rm -rf backend/artifacts
 ```
 
 Start app ClickHouse:
@@ -30,6 +38,17 @@ docker compose exec -T clickhouse clickhouse-client \
   --user schema_kings \
   --password schema_kings \
   --query 'SELECT 1'
+```
+
+At this point ClickHouse is fresh and has only init-created databases/tables:
+
+```text
+bronze
+silver
+gold
+context
+ops
+schema_kings
 ```
 
 ## Load Base Data Locally
@@ -152,6 +171,45 @@ Check services:
 
 ```bash
 docker compose ps
+```
+
+## Full Local Fresh-Start Sequence
+
+Use this when you want to start from zero and get back to a ready local system:
+
+```bash
+cd /Users/shivamtaneja/projects/clickhouse/schema-kings-clickathon
+
+# 1. Stop and delete this project's Docker volumes.
+docker compose --profile langfuse down -v
+
+# 2. Start app ClickHouse.
+docker compose up -d clickhouse
+
+# 3. Wait/check ClickHouse.
+docker compose exec -T clickhouse clickhouse-client \
+  --user schema_kings \
+  --password schema_kings \
+  --query 'SELECT 1'
+
+# 4. Load the 8 base Atlys tables.
+cd data
+CH='docker compose -f ../docker-compose.yml exec -T clickhouse clickhouse-client --user schema_kings --password schema_kings' \
+DB=schema_kings \
+./load.sh
+
+# 5. Bootstrap base context into ClickHouse context memory.
+cd ../backend
+pnpm cli context:bootstrap
+
+# 6. Start Langfuse.
+cd ..
+docker compose --profile langfuse up -d
+
+# 7. Run one pipeline smoke test.
+cd backend
+pnpm exec tsc --noEmit
+pnpm cli run ../specs/01_express_checkout
 ```
 
 ## Backend Env For Local
@@ -302,6 +360,13 @@ CLICKHOUSE_URL=https://<cloud-host>:8443
 CLICKHOUSE_USER=<user>
 CLICKHOUSE_PASSWORD=<password>
 CLICKHOUSE_DATABASE=atlys
+```
+
+Bootstrap context into the target ClickHouse instance:
+
+```bash
+cd /Users/shivamtaneja/projects/clickhouse/schema-kings-clickathon/backend
+pnpm cli context:bootstrap
 ```
 
 Keep Langfuse either local or cloud-hosted:
