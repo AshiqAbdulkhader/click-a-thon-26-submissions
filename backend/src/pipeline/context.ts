@@ -1,7 +1,7 @@
 import { createHash } from "node:crypto";
 import { readFile } from "node:fs/promises";
 import path from "node:path";
-import { executeClickHouse, queryClickHouseText, sqlString } from "./clickhouse.js";
+import { executeClickHouse, queryClickHouseText } from "./clickhouse.js";
 
 export type ContextBundle = {
   baseContext: string;
@@ -55,12 +55,11 @@ export async function loadContextBundle(
   repoRoot: string,
 ): Promise<ContextBundle> {
   await ensureContextTables();
-  const [baseContext, existingDdl, instrumentationNotes] =
-    await Promise.all([
-      readFile(path.join(repoRoot, "base_context.md"), "utf8"),
-      readFile(path.join(repoRoot, "data", "ddl.sql"), "utf8"),
-      readFile(path.join(repoRoot, "data", "instrumentation_notes.md"), "utf8"),
-    ]);
+  const [baseContext, existingDdl, instrumentationNotes] = await Promise.all([
+    readFile(path.join(repoRoot, "base_context.md"), "utf8"),
+    readFile(path.join(repoRoot, "data", "ddl.sql"), "utf8"),
+    readFile(path.join(repoRoot, "data", "instrumentation_notes.md"), "utf8"),
+  ]);
 
   await ingestBaseContextDocuments({
     repoRoot,
@@ -258,7 +257,11 @@ async function ingestBaseContextDocuments(input: {
     {
       doc_id: "instrumentation_notes",
       doc_type: "instrumentation_context",
-      source_path: path.join(input.repoRoot, "data", "instrumentation_notes.md"),
+      source_path: path.join(
+        input.repoRoot,
+        "data",
+        "instrumentation_notes.md",
+      ),
       content: input.instrumentationNotes,
       content_hash: hash(input.instrumentationNotes),
       job_id: input.jobId,

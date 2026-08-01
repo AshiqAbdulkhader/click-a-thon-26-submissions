@@ -5,8 +5,7 @@
   "type": "module",
   "scripts": {
     "cli": "tsx src/cli.ts",
-    "pipeline": "tsx src/cli.ts run",
-    "trace:test": "tsx src/cli.ts trace:test"
+    "pipeline": "tsx src/cli.ts run"
   },
   "dependencies": {
     "@langfuse/otel": "^5.9.0",

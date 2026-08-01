@@ -2,7 +2,6 @@ import "dotenv/config";
 import path from "node:path";
 import { bootstrapContext } from "./pipeline/context.js";
 import { runPipeline } from "./pipeline/runPipeline.js";
-import { runMockLangfuseTrace } from "./tracing/mockTrace.js";
 
 const [, , command, specFolder] = process.argv;
 
@@ -13,13 +12,11 @@ Schema Kings CLI
 Usage:
   pnpm cli context:bootstrap
   pnpm cli run <spec-folder>
-  pnpm cli trace:test
   pnpm pipeline <spec-folder>
 
 Examples:
   pnpm cli context:bootstrap
   pnpm cli run ../specs/05_instant_forex
-  pnpm cli trace:test
   pnpm pipeline ../specs/01_express_checkout
 `);
 }
@@ -32,11 +29,6 @@ async function main() {
     command === "-h"
   ) {
     printHelp();
-    return;
-  }
-
-  if (command === "trace:test") {
-    await runMockLangfuseTrace();
     return;
   }
 
