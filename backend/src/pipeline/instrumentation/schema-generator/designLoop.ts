@@ -29,35 +29,25 @@ export async function runSchemaDesignLoop(
   });
   const draft = await requestSchemaDesignDraft(input, relevantContext);
 
-  if (draft) {
-    schemaPlan = normalizeDesignDraft(
-      draft,
-      fallbackPlan,
-      input.eventProfile,
-      input.manifest,
-    );
-    iterations.push({
-      iteration: 1,
-      actor: "schema_designer",
-      summary:
-        "LLM schema designer proposed a full ClickHouse schema plan from spec, profile, and context evidence.",
-      issues: [
-        ...(draft.rationale ?? []),
-        ...(draft.context_assumptions ?? []).map(
-          (assumption) =>
-            `${assumption.trusted ? "trusted" : "not_trusted"} context: ${assumption.claim} (${assumption.evidence})`,
-        ),
-      ],
-    });
-  } else {
-    iterations.push({
-      iteration: 1,
-      actor: "schema_designer",
-      summary:
-        "No LLM schema suggestion available; using deterministic evidence-based draft.",
-      issues: [],
-    });
-  }
+  schemaPlan = normalizeDesignDraft(
+    draft,
+    fallbackPlan,
+    input.eventProfile,
+    input.manifest,
+  );
+  iterations.push({
+    iteration: 1,
+    actor: "schema_designer",
+    summary:
+      "LLM schema designer proposed a full ClickHouse schema plan from spec, profile, and context evidence.",
+    issues: [
+      ...(draft.rationale ?? []),
+      ...(draft.context_assumptions ?? []).map(
+        (assumption) =>
+          `${assumption.trusted ? "trusted" : "not_trusted"} context: ${assumption.claim} (${assumption.evidence})`,
+      ),
+    ],
+  });
 
   const criticReview = await requestSchemaCriticReview({
     ...input,
@@ -87,21 +77,19 @@ export async function runSchemaDesignLoop(
         criticReview,
         relevantContext,
       });
-      if (revision) {
-        schemaPlan = normalizeDesignDraft(
-          revision,
-          fallbackPlan,
-          input.eventProfile,
-          input.manifest,
-        );
-        iterations.push({
-          iteration: 2,
-          actor: "schema_designer_revision",
-          summary:
-            "LLM schema designer revised the plan using schema critic feedback.",
-          issues: revision.rationale ?? [],
-        });
-      }
+      schemaPlan = normalizeDesignDraft(
+        revision,
+        fallbackPlan,
+        input.eventProfile,
+        input.manifest,
+      );
+      iterations.push({
+        iteration: 2,
+        actor: "schema_designer_revision",
+        summary:
+          "LLM schema designer revised the plan using schema critic feedback.",
+        issues: revision.rationale ?? [],
+      });
     }
   } else {
     iterations.push({
@@ -149,7 +137,7 @@ export async function runSchemaDesignLoop(
   }
 
   return {
-    mode: draft ? "llm_assisted" : "deterministic_only",
+    mode: "llm_assisted",
     iterations,
     final_plan: schemaPlan,
   };

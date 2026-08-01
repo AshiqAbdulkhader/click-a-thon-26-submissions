@@ -12,7 +12,7 @@ export async function requestSchemaDesignDraft(
     executionFeedback?: string[];
   },
   relevantContext: RelevantContextBundle,
-): Promise<SchemaDesignDraft | null> {
+): Promise<SchemaDesignDraft> {
   try {
     const draft = await callGroqJson<SchemaDesignDraft>({
       model: process.env.GROQ_SCHEMA_MODEL ?? "llama-3.1-8b-instant",
@@ -98,17 +98,13 @@ export async function requestSchemaDesignDraft(
       ],
     });
     if (!draft || !Array.isArray(draft.columns)) {
-      console.warn(
-        "Groq schema design returned no usable columns array; using deterministic draft.",
-      );
-      return null;
+      throw new Error("Groq schema design returned no usable columns array.");
     }
     return draft;
   } catch (error) {
-    console.warn(
-      `Groq schema design failed; using deterministic draft: ${error}`,
+    throw new Error(
+      `Groq schema design failed; aborting pipeline: ${error instanceof Error ? error.message : String(error)}`,
     );
-    return null;
   }
 }
 
@@ -254,7 +250,7 @@ export async function requestSchemaRevisionDraft(input: {
   currentPlan: SchemaPlan;
   criticReview: SchemaCriticDraft;
   relevantContext: RelevantContextBundle;
-}): Promise<SchemaDesignDraft | null> {
+}): Promise<SchemaDesignDraft> {
   try {
     const revision = await callGroqJson<SchemaDesignDraft>({
       model: process.env.GROQ_CRITIC_MODEL ?? "llama-3.1-8b-instant",
@@ -295,16 +291,12 @@ export async function requestSchemaRevisionDraft(input: {
       ],
     });
     if (!revision || !Array.isArray(revision.columns)) {
-      console.warn(
-        "Groq schema revision returned no usable columns array; keeping previous schema plan.",
-      );
-      return null;
+      throw new Error("Groq schema revision returned no usable columns array.");
     }
     return revision;
   } catch (error) {
-    console.warn(
-      `Groq schema revision failed; keeping previous schema plan: ${error}`,
+    throw new Error(
+      `Groq schema revision failed after schema critic requested changes; aborting pipeline: ${error instanceof Error ? error.message : String(error)}`,
     );
-    return null;
   }
 }
