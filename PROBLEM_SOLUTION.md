@@ -2,24 +2,24 @@
 
 ## 12-word pitch
 
-Turn feature specs into ClickHouse schemas, analytics, context, insights, and traces.
+Agentic Medallion pipeline turning feature specs into ClickHouse insights and traces.
 
 ## High-level summary
 
-This project builds an agentic analytics system for Atlys. Given a new product
-feature spec and raw event samples, the system should automatically prepare the
-analytics layer that would normally require product, engineering, and analytics
-handoffs.
+This project builds an agentic Medallion architecture for Atlys feature analytics.
+Each feature folder is treated as a feature package: a product spec plus raw event
+samples. The system ingests that package into Bronze, normalizes it into typed
+ClickHouse tables in Silver, and produces product-ready metrics, insights, and
+answers in Gold.
 
-At a high level, the system reads a feature brief, understands the emitted events,
-designs ClickHouse tables, loads or maps the event data, updates the business
-context layer, runs analysis, and produces a product-facing insight summary. The
-important idea is not just "ask an LLM questions about data"; it is to create a
-repeatable pipeline where every step produces an inspectable artifact.
+The important idea is not just "ask an LLM questions about data". The system must
+show a repeatable path from feature spec to analytics output, with inspectable
+artifacts and Langfuse traces proving what happened at each step.
 
 ## What we are building
 
-We are building a feature-spec-to-insight pipeline for ClickHouse.
+We are building a feature-spec-to-insight pipeline for ClickHouse using a
+Medallion data plane and an agentic control plane.
 
 Input:
 
@@ -30,9 +30,11 @@ Input:
 
 Output:
 
+- Bronze raw feature-event records
+- Silver typed feature-event tables
+- Gold business metrics and insights
 - Generated ClickHouse schema
 - Event-to-table mapping
-- Optional materialized views or aggregates
 - Updated context layer
 - SQL analysis results
 - Product-facing insight summary
@@ -40,25 +42,266 @@ Output:
 
 ## Architecture
 
-The intended architecture is a bounded multi-agent pipeline, not an open-ended
-recursive agent loop.
+The architecture has two parts:
 
-Proposed stages:
+1. Data plane: Bronze, Silver, and Gold layers in ClickHouse.
+2. Control plane: orchestrator, specialist agents, MCP/tool access, and tracing.
 
-1. Spec Parser
-2. Event Profiler
-3. Schema Generator
-4. Schema Critic / Validator
-5. ClickHouse Executor
-6. Context Updater
-7. Analytics Query Generator
-8. Insight Writer
-9. Insight Critic / Evidence Checker
-10. Trace and Visualization Layer
+The intended architecture is a disciplined multi-agent system, not an open-ended
+recursive agent group chat. Agents can specialize, but every stage should produce
+inspectable artifacts.
+
+```text
+Feature package: spec.md + events.ndjson
+        ↓
+Bronze Layer
+raw spec, raw event JSON, job metadata
+        ↓
+Instrumentation Agent
+profiles events, designs schema, validates mapping
+        ↓
+Silver Layer
+typed normalized ClickHouse feature tables
+        ↓
+Context Agent
+updates feature, metric, entity, and table context
+        ↓
+Analytics Orchestrator
+calls funnel, segment, correlation, revenue, and anomaly analysis modules/agents
+        ↓
+Gold Layer
+business metrics, insight summaries, confidence scores, recommendations
+        ↓
+PM Interface / Demo UI
+answers user questions using Gold, Silver, context, and ClickHouse
+        ↓
+Langfuse Trace
+proves the full path from input to answer
+```
+
+### Bronze layer
+
+Bronze preserves the raw feature package exactly as received.
+
+Bronze stores:
+
+- `spec.md`
+- raw `events.ndjson`
+- raw JSON event payloads
+- `feature_slug`
+- `job_id`
+- source path
+- ingestion timestamp
+
+Example table:
+
+```text
+bronze_feature_events
+```
+
+Purpose:
+
+- never lose source data
+- allow replaying a run
+- prove what input the system received
+- support the unseen sixth spec without manual preparation
+
+LLM usage:
+
+- not required for Bronze
+- this layer should be deterministic and boring
+
+### Silver layer
+
+Silver turns raw feature events into reliable typed analytical tables.
+
+Silver does:
+
+- flatten JSON
+- cast timestamps and primitive types
+- standardize event names
+- deduplicate if needed
+- extract common columns like `user_id`, `application_id`, `device_type`,
+  `geoip_country_code`, and `destination`
+- create feature-specific typed ClickHouse tables
+
+Example tables:
+
+```text
+silver_express_checkout_events
+silver_group_family_events
+silver_status_sharing_events
+silver_abandoned_checkout_recovery_events
+silver_instant_forex_events
+silver_unseen_feature_events
+```
+
+Important nuance:
+
+Silver is not only "load the data". Silver is where schema quality lives. The
+Instrumentation Agent must decide what table to create, what columns and types to
+use, which fields to flatten, which entity key matters, and what `ORDER BY` makes
+sense for ClickHouse analytics.
+
+LLM usage:
+
+- not needed for basic flattening, deduping, or type casting
+- useful for schema reasoning and semantic choices, such as knowing that
+  `share_id` is the key for recipient-side status-sharing events
+
+### Gold layer
+
+Gold is the business-ready layer the PM and judges care about.
+
+Gold contains:
+
+- funnel metrics
+- segment metrics
+- revenue/add-on metrics
+- correlation findings
+- anomaly findings
+- product insight summaries
+- confidence/evidence notes
+- PM-facing recommendations
+
+Example Gold outputs:
+
+```text
+gold_feature_funnel_metrics
+gold_feature_segment_metrics
+gold_feature_insights
+gold_context_registry
+```
+
+Gold is where the Analytics Orchestrator invokes specialist analysis agents or
+modules and writes the final answerable business layer.
+
+### Agent control plane
+
+The agent layer coordinates the transformations and reasoning.
+
+Proposed agents/modules:
+
+1. Main Orchestrator
+2. Instrumentation Agent
+3. Schema Critic / Validator
+4. Context Agent
+5. Analytics Orchestrator
+6. Funnel Agent
+7. Segment Agent
+8. Correlation Agent
+9. Revenue Agent
+10. Anomaly Agent
+11. Insight Writer Agent
+12. Evidence Critic Agent
+
+The PM should experience one coherent system. Internally, specialist agents can
+divide the work, but the orchestrator owns the flow.
+
+MCP/tool usage:
+
+- query ClickHouse
+- inspect schemas
+- execute DDL/DML
+- read/write run artifacts
+- read/write context
+- run validations
+
+Langfuse usage:
+
+- trace every agent step
+- trace every LLM call
+- trace important SQL/DDL decisions
+- attach generated artifacts and confidence/evidence notes
+- prove the sixth spec output came from the pipeline
+
+## Pipeline flow
+
+For every known spec folder, and eventually the unseen sixth spec, the system
+should run the same flow:
+
+1. Create a `job_id`.
+2. Ingest `spec.md` and `events.ndjson` into Bronze.
+3. Profile raw events.
+4. Parse the feature spec into a structured manifest.
+5. Generate a Silver ClickHouse schema and mapping.
+6. Validate the schema.
+7. Create Silver table(s) and load normalized events.
+8. Update the context layer.
+9. Generate and run analytics queries.
+10. Store Gold metrics/results.
+11. Write product-facing insights.
+12. Validate insights against evidence.
+13. Save a run summary and Langfuse trace.
 
 Each stage should emit a concrete artifact that can be inspected during the demo.
 For example, the schema stage emits DDL, the context stage emits a context diff,
 and the analytics stage emits SQL plus result tables.
+
+## Demo modes
+
+### Mode 1: feature onboarding
+
+Show the system ingesting each known feature package:
+
+```text
+specs/01_express_checkout
+specs/02_group_family
+specs/03_status_sharing
+specs/04_abandoned_checkout_recovery
+specs/05_instant_forex
+```
+
+For each package, show:
+
+- Bronze raw ingest
+- Silver generated schema and normalized table
+- Gold metrics and insights
+- context update
+- Langfuse trace
+
+### Mode 2: PM query
+
+A PM asks a natural-language question, for example:
+
+> Why did iOS users drop from completing checkout for Dubai visa?
+
+The flow:
+
+```text
+PM question
+    ↓
+Main Orchestrator
+    ↓
+Context Agent resolves business meaning
+    ↓
+Analytics Orchestrator chooses analysis plan
+    ↓
+Specialist agents/modules run ClickHouse SQL
+    ↓
+Insight Writer explains the result
+    ↓
+Evidence Critic checks the claims
+    ↓
+Answer + SQL evidence + trace
+```
+
+### Mode 3: unseen sixth spec
+
+When the sixth spec is released, the same pipeline should run without hand-written
+schema or hand-written insights:
+
+```text
+specs/06_unseen
+    ↓
+Bronze
+    ↓
+Silver
+    ↓
+Gold
+    ↓
+trace-backed submission artifacts
+```
 
 ## Stage-by-stage explanation
 
@@ -158,7 +401,7 @@ Example:
 For Instant Forex, it may generate:
 
 ```sql
-CREATE TABLE instant_forex_events
+CREATE TABLE silver_instant_forex_events
 (
     id UUID,
     timestamp DateTime64(3),
@@ -227,18 +470,19 @@ Output artifacts:
 
 What it does:
 
-Runs the approved DDL and loads the feature events into ClickHouse.
+Runs the approved DDL and moves data through Bronze and Silver in ClickHouse.
 
 Like I am 5:
 
-The Executor actually builds the shelves and puts the boxes on them.
+The Executor stores the raw box first, then builds clean shelves and puts the
+right items on them.
 
 Example:
 
-It runs:
+It first stores raw events in Bronze, then runs:
 
 ```sql
-CREATE TABLE instant_forex_events ...
+CREATE TABLE silver_instant_forex_events ...
 ```
 
 Then inserts rows from:
@@ -250,10 +494,11 @@ specs/05_instant_forex/events.ndjson
 Implementation idea:
 
 - Connect to ClickHouse.
-- Create database/table.
-- Flatten NDJSON according to the schema.
-- Insert data.
-- Run verification queries like row count by event.
+- Insert raw event JSON into Bronze.
+- Create Silver database/table.
+- Flatten NDJSON according to the approved schema.
+- Insert typed normalized rows.
+- Run verification queries like row count by event and null/missing checks.
 
 Output artifacts:
 
@@ -278,7 +523,7 @@ Example:
 For Instant Forex, it adds:
 
 - Feature: Instant Forex Add-on
-- Table: `instant_forex_events`
+- Table: `silver_instant_forex_events`
 - Main entity: `application_id`
 - Main metric: attach rate = purchased / offer shown
 - Revenue field: `addon_value_inr`
@@ -300,11 +545,12 @@ Output artifacts:
 
 What it does:
 
-Creates the SQL needed to answer the PM's questions.
+Creates the SQL needed to build Gold metrics and answer the PM's questions.
 
 Like I am 5:
 
 The Query Generator writes the questions in a language ClickHouse understands.
+Specialist analytics agents can own different query families.
 
 Example PM question:
 
@@ -318,7 +564,7 @@ SELECT
     uniqIf(application_id, event_name = 'forex_offer_shown') AS offers,
     uniqIf(application_id, event_name = 'forex_purchased') AS purchases,
     purchases / offers AS attach_rate
-FROM instant_forex_events
+FROM silver_instant_forex_events
 GROUP BY destination
 ORDER BY attach_rate DESC;
 ```
@@ -332,12 +578,19 @@ Implementation idea:
   - segment cuts
   - latency or revenue distribution if present
   - comparison with existing funnel tables if relevant
+- Route query families through specialist modules/agents:
+  - Funnel Agent
+  - Segment Agent
+  - Correlation Agent
+  - Revenue Agent
+  - Anomaly Agent
 - Validate SQL before running it.
 
 Output artifacts:
 
 - `queries.sql`
 - `query_plan.json`
+- Gold metric tables or result files
 
 ### 8. Insight Writer
 
@@ -450,10 +703,17 @@ Output artifacts:
 ## Key decisions
 
 - ClickHouse is the primary datastore and analytical engine.
+- The solution uses a Medallion architecture:
+  - Bronze preserves raw feature packages and raw events.
+  - Silver stores typed normalized feature-event tables.
+  - Gold stores business-ready metrics, insights, and recommendations.
+- The agent system is a control plane over the Medallion data plane.
 - The system should push computation into ClickHouse instead of sending raw rows
   to an LLM.
 - Agents should be used for reasoning-heavy steps such as schema design, context
-  interpretation, and insight writing.
+  interpretation, metric selection, segment analysis, and insight writing.
+- Analytics can be multi-agent internally, but the PM-facing experience should be
+  one coherent orchestrated system.
 - Deterministic validation should be used wherever possible for types, SQL
   validity, required fields, and schema conventions.
 - Tracing is a core deliverable, not a bonus. Judges should be able to follow the
@@ -463,10 +723,12 @@ Output artifacts:
 
 ## What is working conceptually
 
-- The problem can be modeled as a compiler-like pipeline:
-  feature spec in, analytics artifacts out.
+- The problem can be modeled as an agentic Medallion pipeline:
+  feature package in, Bronze/Silver/Gold artifacts out.
 - The known specs share enough structure to support a reusable approach:
   event families, funnel steps, entities, dimensions, and PM questions.
+- The five known specs can be onboarded through the same path that will later
+  handle the sixth unseen spec.
 - ClickHouse is well suited for this because most analysis can be expressed as
   grouped aggregations, funnels, segment comparisons, and distribution queries.
 - A critic stage is useful because judges will care about schema quality, not just
@@ -477,12 +739,14 @@ Output artifacts:
 ## Known broken / unresolved
 
 - The exact agent framework is not finalized yet.
-- The exact table design strategy is not finalized yet:
-  one table per feature, one table per event, or hybrid.
+- The exact Silver table strategy is not finalized yet:
+  one typed table per feature, one table per event, or hybrid.
 - The context layer storage format is not finalized yet.
 - The visualization layer is not finalized yet.
 - The Langfuse trace structure is not finalized yet.
 - Human approval gates are not finalized yet.
+- The exact split between Analytics Orchestrator, Funnel Agent, Segment Agent,
+  Correlation Agent, Revenue Agent, and Anomaly Agent is not finalized yet.
 - The system does not yet prove it can generalize to the unseen sixth spec.
 - The base context may contain contradictions and stale definitions; the system
   must detect and handle these rather than blindly trusting it.
@@ -492,12 +756,13 @@ Output artifacts:
 During the demo, we should be able to show a new feature spec entering the system
 and the following artifacts coming out:
 
+- Bronze raw feature package and raw events
 - generated schema
 - schema validation notes
-- created ClickHouse table
-- loaded feature events
+- created Silver ClickHouse table
+- normalized feature events
 - updated context diff
-- generated SQL analysis
+- Gold metrics and generated SQL analysis
 - product insight summary
 - confidence/evidence notes
 - trace of the full pipeline
