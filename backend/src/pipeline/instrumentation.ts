@@ -13,6 +13,7 @@ import {
   GeneratedContextRegistry,
   updateGeneratedContext,
 } from "./context.js";
+import { recordPipelineStage } from "./tracking.js";
 
 type FieldProfile = {
   path: string;
@@ -129,6 +130,19 @@ export async function runInstrumentationAgent(input: {
         },
       });
 
+      await recordPipelineStage({
+        jobId: input.jobId,
+        stageId: "01_bronze_ingest",
+        stageName: "Bronze Ingest",
+        status: "completed",
+        stageInput: {
+          feature_slug: featureSlug,
+          spec_path: specPath,
+          events_path: eventsPath,
+        },
+        stageOutput: report,
+      });
+
       return {
         specMarkdown: loadedSpecMarkdown,
         eventsNdjson: loadedEventsNdjson,
@@ -168,6 +182,21 @@ export async function runInstrumentationAgent(input: {
             "02_event_profiler",
             "event_profile.json",
           ),
+        },
+      });
+
+      await recordPipelineStage({
+        jobId: input.jobId,
+        stageId: "02_event_profiler",
+        stageName: "Event Profiler",
+        status: "completed",
+        stageInput: {
+          feature_slug: featureSlug,
+        },
+        stageOutput: {
+          row_count: profile.row_count,
+          event_counts: profile.event_counts,
+          field_count: profile.fields.length,
         },
       });
 
@@ -218,6 +247,24 @@ export async function runInstrumentationAgent(input: {
             "03_spec_parser",
             "feature_manifest.json",
           ),
+        },
+      });
+
+      await recordPipelineStage({
+        jobId: input.jobId,
+        stageId: "03_spec_parser",
+        stageName: "Spec Parser",
+        status: "completed",
+        stageInput: {
+          feature_slug: featureSlug,
+          event_names: eventProfile.event_order,
+        },
+        stageOutput: {
+          feature_name: parsedManifest.feature_name,
+          workflow_type: parsedManifest.workflow_type,
+          primary_entity: parsedManifest.primary_entity,
+          success_event: parsedManifest.success_event,
+          metric_hints: parsedManifest.metric_hints,
         },
       });
 
@@ -284,6 +331,25 @@ export async function runInstrumentationAgent(input: {
               "mapping.json",
             ),
           ],
+        },
+      });
+
+      await recordPipelineStage({
+        jobId: input.jobId,
+        stageId: "04_schema_generator",
+        stageName: "Schema Generator",
+        status: "completed",
+        stageInput: {
+          feature_slug: featureSlug,
+          workflow_type: manifest.workflow_type,
+          primary_entity: manifest.primary_entity,
+        },
+        stageOutput: {
+          table: `silver.${plan.table_name}`,
+          engine: plan.engine,
+          partition_by: plan.partition_by,
+          order_by: plan.order_by,
+          column_count: plan.columns.length,
         },
       });
 
@@ -422,13 +488,15 @@ ${jsonEachRow}
     });
 
     const updatedContext = await updateGeneratedContext({
-      repoRoot: input.repoRoot,
+      job_id: input.jobId,
       feature_slug: featureSlug,
       table_name: schemaPlan.table_name,
       primary_entity: manifest.primary_entity,
+      workflow_type: manifest.workflow_type,
       event_names: manifest.event_order,
       success_event: manifest.success_event,
       metric_hints: manifest.metric_hints,
+      validation: loadReport.validation,
     });
 
     await writeStageText(

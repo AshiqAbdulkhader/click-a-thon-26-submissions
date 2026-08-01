@@ -1,4 +1,6 @@
 import "dotenv/config";
+import path from "node:path";
+import { bootstrapContext } from "./pipeline/context.js";
 import { runPipeline } from "./pipeline/runPipeline.js";
 import { runMockLangfuseTrace } from "./tracing/mockTrace.js";
 
@@ -9,11 +11,13 @@ function printHelp() {
 Schema Kings CLI
 
 Usage:
+  pnpm cli context:bootstrap
   pnpm cli run <spec-folder>
   pnpm cli trace:test
   pnpm pipeline <spec-folder>
 
 Examples:
+  pnpm cli context:bootstrap
   pnpm cli run ../specs/05_instant_forex
   pnpm cli trace:test
   pnpm pipeline ../specs/01_express_checkout
@@ -33,6 +37,15 @@ async function main() {
 
   if (command === "trace:test") {
     await runMockLangfuseTrace();
+    return;
+  }
+
+  if (command === "context:bootstrap") {
+    const repoRoot = path.resolve(process.cwd(), "..");
+    const registry = await bootstrapContext(repoRoot);
+    console.log("Context bootstrap completed.");
+    console.log(`Features in context: ${registry.features.length}`);
+    console.log(`Open contradictions: ${registry.contradictions.length}`);
     return;
   }
 

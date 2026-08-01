@@ -136,3 +136,6 @@ opencode.json
 .cursor/cli.json
 .gemini/settings.json
 .grok/config.toml
+
+# Pipeline Output Artifacts
+backend/artifacts/
