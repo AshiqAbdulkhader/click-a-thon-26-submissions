@@ -1,9 +1,0 @@
-{
-  "job_id": "20260801T103107_01_express_checkout",
-  "feature_slug": "express_checkout",
-  "spec_path": "/Users/shivamtaneja/projects/clickhouse/schema-kings-clickathon/specs/01_express_checkout/spec.md",
-  "events_path": "/Users/shivamtaneja/projects/clickhouse/schema-kings-clickathon/specs/01_express_checkout/events.ndjson",
-  "spec_bytes": 1388,
-  "events_bytes": 2278869,
-  "ingested_at": "2026-08-01T10:31:07.877Z"
-}
