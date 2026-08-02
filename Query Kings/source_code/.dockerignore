@@ -4,6 +4,7 @@
 **/.env.*
 !**/.env.example
 **/frontend/dist
+**/backend/artifacts
 **/*.log
 .october
 .claude
@@ -12,5 +13,3 @@
 # Huge dataset — load into ClickHouse Cloud once; do not ship in the image
 data/*.parquet
 data/*.ndjson
-
-# Keep artifacts (needed for overview UI). Do not ignore backend/artifacts.

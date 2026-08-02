@@ -1,7 +1,8 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { startActiveObservation } from "@langfuse/tracing";
 import { loadContextBundle } from "../context.js";
+import { writeJobRootJson } from "../instrumentation/artifacts.js";
 import { describeModelRouting } from "../models.js";
 import { recordPipelineRun } from "../tracking.js";
 import { shutdownLangfuse, startLangfuse } from "../../tracing/langfuse.js";
@@ -138,21 +139,14 @@ export async function runAnalyticsAsk(input: {
               artifactRoot,
               traceId,
             });
-            await writeFile(
-              path.join(artifactRoot, "ask_summary.json"),
-              `${JSON.stringify(
-                {
+            await writeJobRootJson(artifactRoot, "ask_summary.json", {
                   job_id: jobId,
                   question: input.question,
                   status: "uninterpretable",
                   answer: finalAnswer.short_answer,
                   artifact_root: artifactRoot,
                   langfuse_trace_id: traceId,
-                },
-                null,
-                2,
-              )}\n`,
-            );
+                });
             await recordPipelineRun({
               jobId,
               featureSlug,
@@ -373,10 +367,7 @@ export async function runAnalyticsAsk(input: {
               row_count: result.row_count,
             })),
           };
-          await writeFile(
-            path.join(artifactRoot, "ask_summary.json"),
-            `${JSON.stringify(runSummary, null, 2)}\n`,
-          );
+          await writeJobRootJson(artifactRoot, "ask_summary.json", runSummary);
           await recordPipelineRun({
             jobId,
             featureSlug,
@@ -425,22 +416,15 @@ export async function runAnalyticsAsk(input: {
       stage: "orchestrator",
       reason: error instanceof Error ? error.message : String(error),
     });
-    await writeFile(
-      path.join(artifactRoot, "ask_summary.json"),
-      `${JSON.stringify(
-        {
-          job_id: jobId,
-          question: input.question,
-          status: "unavailable",
-          error: error instanceof Error ? error.message : String(error),
-          answer: fallback.short_answer,
-          artifact_root: artifactRoot,
-          langfuse_trace_id: traceId,
-        },
-        null,
-        2,
-      )}\n`,
-    );
+    await writeJobRootJson(artifactRoot, "ask_summary.json", {
+      job_id: jobId,
+      question: input.question,
+      status: "unavailable",
+      error: error instanceof Error ? error.message : String(error),
+      answer: fallback.short_answer,
+      artifact_root: artifactRoot,
+      langfuse_trace_id: traceId,
+    });
     await recordPipelineRun({
       jobId,
       featureSlug,
@@ -479,27 +463,17 @@ async function finalizeUnavailable(input: {
     stage: input.stage,
     reason: input.reason,
   });
-  await writeFile(
-    path.join(input.artifactRoot, "unavailable_answer.json"),
-    `${JSON.stringify(answer, null, 2)}\n`,
-  );
-  await writeFile(
-    path.join(input.artifactRoot, "ask_summary.json"),
-    `${JSON.stringify(
-      {
-        job_id: input.jobId,
-        question: input.question,
-        status: "unavailable",
-        stage: input.stage,
-        reason: input.reason,
-        answer: answer.short_answer,
-        artifact_root: input.artifactRoot,
-        langfuse_trace_id: input.traceId,
-      },
-      null,
-      2,
-    )}\n`,
-  );
+  await writeJobRootJson(input.artifactRoot, "unavailable_answer.json", answer);
+  await writeJobRootJson(input.artifactRoot, "ask_summary.json", {
+    job_id: input.jobId,
+    question: input.question,
+    status: "unavailable",
+    stage: input.stage,
+    reason: input.reason,
+    answer: answer.short_answer,
+    artifact_root: input.artifactRoot,
+    langfuse_trace_id: input.traceId,
+  });
   await recordPipelineRun({
     jobId: input.jobId,
     featureSlug: input.featureSlug,

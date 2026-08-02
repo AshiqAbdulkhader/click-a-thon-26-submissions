@@ -7,6 +7,7 @@ import {
   startReportServer,
 } from "./pipeline/report/index.js";
 import { runPipeline } from "./pipeline/runPipeline.js";
+import { pushArtifactsDirToClickHouse } from "./pipeline/jobArtifacts.js";
 import { runSetup } from "./pipeline/setup.js";
 
 const [, , command, ...args] = process.argv;
@@ -23,6 +24,7 @@ Usage:
   pnpm cli ask <question>
   pnpm cli report [job_id]
   pnpm cli serve [--port 8787]
+  pnpm cli artifacts:push [dir]   # optional: upload an old on-disk folder → CH
   pnpm pipeline <spec-folder>
 
 Examples:
@@ -80,6 +82,18 @@ async function main() {
   if (command === "setup") {
     const repoRoot = path.resolve(process.cwd(), "..");
     await runSetup({ repoRoot });
+    return;
+  }
+
+  if (command === "artifacts:push") {
+    const repoRoot = path.resolve(process.cwd(), "..");
+    const dirArg = args[0];
+    const artifactsRoot = dirArg
+      ? path.resolve(process.cwd(), dirArg)
+      : path.join(repoRoot, "backend", "artifacts");
+    console.log(`Pushing ${artifactsRoot} → ops.job_artifacts …`);
+    const result = await pushArtifactsDirToClickHouse(artifactsRoot);
+    console.log(`Done. jobs≈${result.jobs}, files=${result.files}`);
     return;
   }
 

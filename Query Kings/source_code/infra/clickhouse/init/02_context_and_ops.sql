@@ -200,3 +200,14 @@ CREATE TABLE IF NOT EXISTS ops.data_load_tables
 )
 ENGINE = ReplacingMergeTree(loaded_at)
 ORDER BY (load_id, table_name);
+
+CREATE TABLE IF NOT EXISTS ops.job_artifacts
+(
+    job_id String,
+    stage LowCardinality(String),
+    filename String,
+    content String,
+    updated_at DateTime64(3) DEFAULT now64(3)
+)
+ENGINE = ReplacingMergeTree(updated_at)
+ORDER BY (job_id, stage, filename);

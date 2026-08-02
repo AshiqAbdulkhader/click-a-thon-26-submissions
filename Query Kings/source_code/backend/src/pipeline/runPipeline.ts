@@ -1,7 +1,8 @@
-import { mkdir, writeFile } from "node:fs/promises";
+import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { startActiveObservation } from "@langfuse/tracing";
 import { loadContextBundle } from "./context.js";
+import { writeJobRootJson } from "./instrumentation/artifacts.js";
 import { completedInstrumentationStageIds } from "./instrumentation/trackingEvents.js";
 import { runInstrumentationAgent } from "./instrumentation.js";
 import { ensurePipelineLayers } from "./layers.js";
@@ -150,10 +151,7 @@ export async function runPipeline(input: RunPipelineInput) {
             agent: "pipeline_orchestrator",
           },
         });
-        await writeFile(
-          path.join(artifactRoot, "run_summary.json"),
-          `${JSON.stringify(runSummary, null, 2)}\n`,
-        );
+        await writeJobRootJson(artifactRoot, "run_summary.json", runSummary);
         span.update({
           output: runSummary,
         });

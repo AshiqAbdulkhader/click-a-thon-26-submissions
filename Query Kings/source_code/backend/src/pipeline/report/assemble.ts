@@ -1,5 +1,8 @@
-import { readdir, readFile, stat } from "node:fs/promises";
-import path from "node:path";
+import {
+  listJobsFromClickHouse,
+  readJobArtifact,
+  splitArtifactRelPath,
+} from "../jobArtifacts.js";
 import type {
   AskCard,
   FeatureCard,
@@ -13,9 +16,11 @@ type JobKind = "ask" | "run";
 
 type JobMeta = {
   job_id: string;
-  dir: string;
+  /** Present when loaded from local filesystem. */
+  dir?: string;
   mode: JobKind;
   mtimeMs: number;
+  source: "clickhouse" | "filesystem";
 };
 
 const JUNK_ASK =
@@ -25,12 +30,12 @@ export async function assemblePipelineReport(input: {
   repoRoot: string;
   jobId?: string;
 }): Promise<PipelineReport> {
-  const artifactsRoot = path.join(input.repoRoot, "backend", "artifacts");
-  const jobs = await listJobs(artifactsRoot);
+  // Reports read from ClickHouse only (ops.job_artifacts) — same for local Docker + Cloud.
+  const jobs = await listJobsFromClickHouseMapped();
 
   if (jobs.length === 0) {
     throw new Error(
-      `No pipeline artifacts found under ${artifactsRoot}. Run \`pnpm cli run <spec>\` or \`pnpm cli ask "…"\` first.`,
+      `No pipeline artifacts in ClickHouse ops.job_artifacts. Run \`pnpm cli run\` / \`pnpm cli ask\` against this warehouse first.`,
     );
   }
 
@@ -98,9 +103,7 @@ async function assembleOverview(jobs: JobMeta[]): Promise<PipelineReport> {
 
   const latestRun = runs[runs.length - 1];
   const rawDiff = latestRun
-    ? await readText(
-        path.join(latestRun.dir, "07_context_agent", "context_diff.md"),
-      )
+    ? await readJobText(latestRun, "07_context_agent/context_diff.md")
     : null;
   const contextChangelog =
     buildFeatureListChangelog(uniqueFeatures) +
@@ -177,15 +180,12 @@ async function assembleRunFocus(input: {
 }): Promise<PipelineReport> {
   const focus = await loadFeatureCard(input.job);
   const contextChangelog =
-    (await readText(
-      path.join(input.job.dir, "07_context_agent", "context_diff.md"),
-    )) ?? `Instrumented \`${focus.feature_slug}\` → \`${focus.table_name}\``;
+    (await readJobText(input.job, "07_context_agent/context_diff.md")) ?? `Instrumented \`${focus.feature_slug}\` → \`${focus.table_name}\``;
 
   const updated =
-    (await readJson<{
+    (await readJobJson<{
       contradictions?: Array<{ id?: string; summary?: string }>;
-    }>(path.join(input.job.dir, "07_context_agent", "updated_context.json"))) ??
-    {};
+    }>(input.job, "07_context_agent/updated_context.json")) ?? {};
 
   return {
     generated_at: new Date().toISOString(),
@@ -233,23 +233,19 @@ async function findFeatureCard(
 
 async function loadFeatureCard(job: JobMeta): Promise<FeatureCard> {
   const summary =
-    (await readJson<Record<string, unknown>>(
-      path.join(job.dir, "run_summary.json"),
-    )) ?? {};
+    (await readJobJson<Record<string, unknown>>(job, "run_summary.json")) ?? {};
   const plan =
-    (await readJson<{
+    (await readJobJson<{
       engine?: string;
       order_by?: string[];
       partition_by?: string;
       table_name?: string;
-    }>(path.join(job.dir, "04_schema_generator", "schema_plan.json"))) ?? {};
+    }>(job, "04_schema_generator/schema_plan.json")) ?? {};
   const sql =
-    (await readText(path.join(job.dir, "04_schema_generator", "schema.sql"))) ??
+    (await readJobText(job, "04_schema_generator/schema.sql")) ??
     "";
   const contextDiff =
-    (await readText(
-      path.join(job.dir, "07_context_agent", "context_diff.md"),
-    )) ?? "";
+    (await readJobText(job, "07_context_agent/context_diff.md")) ?? "";
   const traceId = str(summary.langfuse_trace_id) ?? "";
 
   const featureSlug = str(summary.feature_slug) ?? job.job_id;
@@ -286,21 +282,19 @@ async function loadAskCard(
 ): Promise<AskCard> {
   const full = options?.full ?? false;
   const summary =
-    (await readJson<Record<string, unknown>>(
-      path.join(job.dir, "ask_summary.json"),
-    )) ?? {};
+    (await readJobJson<Record<string, unknown>>(job, "ask_summary.json")) ?? {};
   const finalAnswer =
-    (await readJson<Record<string, unknown>>(
-      path.join(job.dir, "11_evidence_critic", "final_answer.json"),
+    (await readJobJson<Record<string, unknown>>(
+      job,
+      "11_evidence_critic/final_answer.json",
     )) ??
-    (await readJson<Record<string, unknown>>(
-      path.join(job.dir, "10_insight_synthesizer", "answer.json"),
+    (await readJobJson<Record<string, unknown>>(
+      job,
+      "10_insight_synthesizer/answer.json",
     )) ??
     {};
   const intent =
-    (await readJson<{ feature_hints?: string[] }>(
-      path.join(job.dir, "08a_query_understanding", "intent.json"),
-    )) ?? {};
+    (await readJobJson<{ feature_hints?: string[] }>(job, "08a_query_understanding/intent.json")) ?? {};
 
   const traceId =
     str(summary.langfuse_trace_id) ?? str(finalAnswer.trace_id) ?? "";
@@ -346,10 +340,9 @@ async function loadContradictionsFromLatest(
 ): Promise<ReportContradiction[]> {
   for (let i = runs.length - 1; i >= 0; i -= 1) {
     const updated =
-      (await readJson<{
+      (await readJobJson<{
         contradictions?: Array<{ id?: string; summary?: string }>;
-      }>(path.join(runs[i].dir, "07_context_agent", "updated_context.json"))) ??
-      {};
+      }>(runs[i], "07_context_agent/updated_context.json")) ?? {};
     if (updated.contradictions?.length) {
       return updated.contradictions.slice(0, 10).map((c) => ({
         id: c.id ?? "?",
@@ -374,37 +367,14 @@ function buildFeatureListChangelog(features: FeatureCard[]): string {
   return lines.join("\n");
 }
 
-async function listJobs(artifactsRoot: string): Promise<JobMeta[]> {
-  let entries: string[] = [];
-  try {
-    entries = await readdir(artifactsRoot);
-  } catch {
-    return [];
-  }
-
-  const jobs: JobMeta[] = [];
-  for (const jobId of entries) {
-    const dir = path.join(artifactsRoot, jobId);
-    let info;
-    try {
-      info = await stat(dir);
-    } catch {
-      continue;
-    }
-    if (!info.isDirectory()) continue;
-
-    const hasAsk = await fileExists(path.join(dir, "ask_summary.json"));
-    const hasRun = await fileExists(path.join(dir, "run_summary.json"));
-    if (!hasAsk && !hasRun) continue;
-
-    jobs.push({
-      job_id: jobId,
-      dir,
-      mode: hasAsk ? "ask" : "run",
-      mtimeMs: info.mtimeMs,
-    });
-  }
-  return jobs;
+async function listJobsFromClickHouseMapped(): Promise<JobMeta[]> {
+  const chJobs = await listJobsFromClickHouse();
+  return chJobs.map((job) => ({
+    job_id: job.job_id,
+    mode: job.mode,
+    mtimeMs: job.mtimeMs,
+    source: "clickhouse" as const,
+  }));
 }
 
 function asEvidence(value: unknown): ReportEvidence[] {
@@ -448,27 +418,20 @@ function byTimeDesc(a: JobMeta, b: JobMeta) {
   return b.mtimeMs - a.mtimeMs;
 }
 
-async function readJson<T>(filePath: string): Promise<T | null> {
+async function readJobJson<T>(job: JobMeta, relativePath: string): Promise<T | null> {
+  const text = await readJobText(job, relativePath);
+  if (text == null) return null;
   try {
-    return JSON.parse(await readFile(filePath, "utf8")) as T;
+    return JSON.parse(text) as T;
   } catch {
     return null;
   }
 }
 
-async function readText(filePath: string): Promise<string | null> {
-  try {
-    return await readFile(filePath, "utf8");
-  } catch {
-    return null;
-  }
-}
-
-async function fileExists(filePath: string): Promise<boolean> {
-  try {
-    await stat(filePath);
-    return true;
-  } catch {
-    return false;
-  }
+async function readJobText(
+  job: JobMeta,
+  relativePath: string,
+): Promise<string | null> {
+  const { stage, filename } = splitArtifactRelPath(relativePath);
+  return readJobArtifact(job.job_id, stage, filename);
 }
