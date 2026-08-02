@@ -1,0 +1,4621 @@
+{
+  "version": 1,
+  "updated_at": "2026-08-01T23:47:59.787Z",
+  "features": [
+    {
+      "feature_slug": "abandoned_checkout_recovery",
+      "table_name": "silver.abandoned_checkout_recovery_events",
+      "primary_entity": "application_id",
+      "event_names": [
+        "abandonment_detected",
+        "reminder_sent",
+        "reminder_opened",
+        "reminder_cta_clicked",
+        "resumed_at_step",
+        "reconverted"
+      ],
+      "success_event": "reconverted",
+      "metric_hints": [
+        "reconversion_rate_by_drop_step",
+        "channel_effectiveness_open_click_reconvert",
+        "timing_effect_on_reconversion",
+        "segment_cuts_by_device_geo_destination"
+      ],
+      "added_at": "2026-08-01 23:47:52.992"
+    },
+    {
+      "feature_slug": "express_checkout",
+      "table_name": "silver.express_checkout_events",
+      "primary_entity": "application_id",
+      "event_names": [
+        "express_checkout_shown",
+        "express_checkout_selected",
+        "saved_method_used",
+        "otp_entered",
+        "express_payment_confirmed"
+      ],
+      "success_event": "express_payment_confirmed",
+      "metric_hints": [
+        "Conversion lift vs standard checkout",
+        "OTP success rate by device_type/os/geoip_country_code",
+        "Payment latency (shown to confirmed)",
+        "Adoption rate by device, geo, saved_method_type"
+      ],
+      "added_at": "2026-08-01 23:47:34.125"
+    },
+    {
+      "feature_slug": "group_family",
+      "table_name": "silver.group_family_events",
+      "primary_entity": "group_id",
+      "event_names": [
+        "group_started",
+        "traveller_added",
+        "traveller_removed",
+        "group_submitted"
+      ],
+      "success_event": "group_submitted",
+      "metric_hints": [
+        "Completion rate (group_started → group_submitted) by group size",
+        "Add/remove churn: travellers added vs removed per group",
+        "Per-traveller document completion bottleneck for large groups",
+        "Destinations/segments driving group applications"
+      ],
+      "added_at": "2026-08-01 23:47:40.696"
+    },
+    {
+      "feature_slug": "instant_forex",
+      "table_name": "silver.instant_forex_events",
+      "primary_entity": "application_id",
+      "event_names": [
+        "forex_offer_shown",
+        "currency_selected",
+        "amount_entered",
+        "forex_added_to_cart",
+        "forex_purchased"
+      ],
+      "success_event": "forex_purchased",
+      "metric_hints": [
+        "attach_rate_overall_and_by_destination",
+        "aov_uplift_distribution_of_addon_value_inr",
+        "drop_points_offer_to_amount_entered_and_added_to_cart_to_purchased",
+        "best_attach_destinations_and_currencies_by_segment"
+      ],
+      "added_at": "2026-08-01 23:47:59.552"
+    },
+    {
+      "feature_slug": "status_sharing",
+      "table_name": "silver.status_sharing_events",
+      "primary_entity": "share_id",
+      "event_names": [
+        "share_clicked",
+        "channel_selected",
+        "link_generated",
+        "link_opened",
+        "recipient_cta_clicked"
+      ],
+      "success_event": "recipient_cta_clicked",
+      "metric_hints": [
+        "Share rate by status_shared",
+        "Channel mix for new-user opens",
+        "Recipient conversion rate (opens to CTA) for new users",
+        "Destination spread of shares"
+      ],
+      "added_at": "2026-08-01 23:47:47.182"
+    }
+  ],
+  "contradictions": [
+    {
+      "id": "base_context_eta_name_mismatch",
+      "summary": "Base context mentions visa_issuance_eta_days, while the loaded application_started DDL exposes eta_shown.",
+      "evidence": "base_context.md defines visa_issuance_eta_days; data/ddl.sql defines application_started.eta_shown Nullable(String)."
+    },
+    {
+      "id": "conversion_denominator_ambiguity",
+      "summary": "Base context defines leadership conversion as purchases divided by sessions, but funnel conversion as purchases divided by application_started users.",
+      "evidence": "Metric definitions contain both formulas; analytics must choose based on question type."
+    },
+    {
+      "id": "gap:instant_forex:orphan_metric_best_attach_destinations_and_currencies_by_segment",
+      "summary": "Metric hint \"best_attach_destinations_and_currencies_by_segment\" does not clearly map to any generated column name; analytics should treat the formula as approximate.",
+      "evidence": "hint tokens=best, attach, destinations, currencies, segment; columns=event_name, event_id, timestamp, job_id, addon_value_inr, amount, app_version, application_id, city, client_lib, destination, device_type, from_currency, fx_rate, geoip_country_code, os, to_currency, user_id, raw_json, ingested_at"
+    },
+    {
+      "id": "known_issue_link:abandoned_checkout_recovery:k1_ios_webkit_otp",
+      "summary": "Feature abandoned_checkout_recovery touches payment/OTP/checkout flows. Analytics should cut by iOS/device and check against known issue K1 (iOS WebKit OTP autofill regression).",
+      "evidence": "base_context.md known-issues log K1 — pay_now_clicked → purchase_completed weakness on iOS; payment-heavy geos most exposed."
+    },
+    {
+      "id": "known_issue_link:abandoned_checkout_recovery:k5_whatsapp_nudge",
+      "summary": "Feature abandoned_checkout_recovery relates to recovery/re-engagement. Context notes K5 WhatsApp nudge can lift returns for previously dropped users — separate campaign lift from product changes.",
+      "evidence": "base_context.md known-issues log K5."
+    },
+    {
+      "id": "known_issue_link:express_checkout:k1_ios_webkit_otp",
+      "summary": "Feature express_checkout touches payment/OTP/checkout flows. Analytics should cut by iOS/device and check against known issue K1 (iOS WebKit OTP autofill regression).",
+      "evidence": "base_context.md known-issues log K1 — pay_now_clicked → purchase_completed weakness on iOS; payment-heavy geos most exposed."
+    },
+    {
+      "id": "known_issue_link:express_checkout:k6_summer20",
+      "summary": "Feature express_checkout may interact with promo/currency behaviour. K6 SUMMER20 campaign elevates coupon_applied and can lower realised value — do not treat value drops as pure product regressions without checking coupons.",
+      "evidence": "base_context.md known-issues log K6."
+    },
+    {
+      "id": "known_issue_link:group_family:k2_k3_passport",
+      "summary": "Feature group_family relates to document/passport capture. Watch K2 (Android capture failures after model update) and K3 (non-Latin MRZ OCR retries).",
+      "evidence": "base_context.md known-issues log K2 and K3; document_uploaded.retry_count and is_crossed_failed_attempt_threshold are the base signals."
+    },
+    {
+      "id": "known_issue_link:instant_forex:k6_summer20",
+      "summary": "Feature instant_forex may interact with promo/currency behaviour. K6 SUMMER20 campaign elevates coupon_applied and can lower realised value — do not treat value drops as pure product regressions without checking coupons.",
+      "evidence": "base_context.md known-issues log K6."
+    }
+  ],
+  "columns": [
+    {
+      "table_name": "application_started",
+      "column_name": "app_session_id",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "app_session_id",
+      "semantic_role": "entity_id",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "app_version",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "app_version",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "application_id",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "application_id",
+      "semantic_role": "entity_id",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "citizenship",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "citizenship",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "city",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "city",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "client_ip",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "client_ip",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "client_lib",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "client_lib",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "co_travelers",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "co_travelers",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "destination",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "destination",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "device",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "device",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "device_type",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "device_type",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "duplicate_id",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "duplicate_id",
+      "semantic_role": "entity_id",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "eta_shown",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "eta_shown",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "fbclid",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "fbclid",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "flow",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "flow",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "funnel_type",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "funnel_type",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "gad_source",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "gad_source",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "gclid",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "gclid",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "geoip_country_code",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "geoip_country_code",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "geoip_subdivision_1_code",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "geoip_subdivision_1_code",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "id",
+      "clickhouse_type": "UUID",
+      "source_path": "id",
+      "semantic_role": "metric_value",
+      "is_nullable": false
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "is_back_filled",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_back_filled",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "is_enterprise",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_enterprise",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "is_guest",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_guest",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "is_referral",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_referral",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "language",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "language",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "latitude",
+      "clickhouse_type": "Nullable(Float64)",
+      "source_path": "latitude",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "locale",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "locale",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "longitude",
+      "clickhouse_type": "Nullable(Float64)",
+      "source_path": "longitude",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "os",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "os",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "purpose",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "purpose",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "timestamp",
+      "clickhouse_type": "DateTime",
+      "source_path": "timestamp",
+      "semantic_role": "timestamp",
+      "is_nullable": false
+    },
+    {
+      "table_name": "application_started",
+      "column_name": "user_id",
+      "clickhouse_type": "String",
+      "source_path": "user_id",
+      "semantic_role": "entity_id",
+      "is_nullable": false
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "app_session_id",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "app_session_id",
+      "semantic_role": "entity_id",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "app_version",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "app_version",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "application_id",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "application_id",
+      "semantic_role": "entity_id",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "attempts",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "attempts",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "auth_method",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "auth_method",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "citizenship",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "citizenship",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "city",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "city",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "client_ip",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "client_ip",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "client_lib",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "client_lib",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "co_travelers",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "co_travelers",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "destination",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "destination",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "device",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "device",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "device_type",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "device_type",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "duplicate_id",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "duplicate_id",
+      "semantic_role": "entity_id",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "fbclid",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "fbclid",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "funnel_type",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "funnel_type",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "gad_source",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "gad_source",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "gclid",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "gclid",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "geoip_country_code",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "geoip_country_code",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "geoip_subdivision_1_code",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "geoip_subdivision_1_code",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "id",
+      "clickhouse_type": "UUID",
+      "source_path": "id",
+      "semantic_role": "metric_value",
+      "is_nullable": false
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "is_back_filled",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_back_filled",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "is_enterprise",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_enterprise",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "is_guest",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_guest",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "is_new_user",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_new_user",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "is_referral",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_referral",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "language",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "language",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "latitude",
+      "clickhouse_type": "Nullable(Float64)",
+      "source_path": "latitude",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "locale",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "locale",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "longitude",
+      "clickhouse_type": "Nullable(Float64)",
+      "source_path": "longitude",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "os",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "os",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "timestamp",
+      "clickhouse_type": "DateTime",
+      "source_path": "timestamp",
+      "semantic_role": "timestamp",
+      "is_nullable": false
+    },
+    {
+      "table_name": "auth_completed",
+      "column_name": "user_id",
+      "clickhouse_type": "String",
+      "source_path": "user_id",
+      "semantic_role": "entity_id",
+      "is_nullable": false
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "app_session_id",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "app_session_id",
+      "semantic_role": "entity_id",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "app_version",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "app_version",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "application_id",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "application_id",
+      "semantic_role": "entity_id",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "card_type",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "card_type",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "citizenship",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "citizenship",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "city",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "city",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "client_ip",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "client_ip",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "client_lib",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "client_lib",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "co_travelers",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "co_travelers",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "destination",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "destination",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "device",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "device",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "device_type",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "device_type",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "duplicate_id",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "duplicate_id",
+      "semantic_role": "entity_id",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "fbclid",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "fbclid",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "flow",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "flow",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "funnel_type",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "funnel_type",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "gad_source",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "gad_source",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "gclid",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "gclid",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "geoip_country_code",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "geoip_country_code",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "geoip_subdivision_1_code",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "geoip_subdivision_1_code",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "id",
+      "clickhouse_type": "UUID",
+      "source_path": "id",
+      "semantic_role": "metric_value",
+      "is_nullable": false
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "is_back_filled",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_back_filled",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "is_enterprise",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_enterprise",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "is_guest",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_guest",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "is_guest_browse",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_guest_browse",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "is_referral",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_referral",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "language",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "language",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "latitude",
+      "clickhouse_type": "Nullable(Float64)",
+      "source_path": "latitude",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "locale",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "locale",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "longitude",
+      "clickhouse_type": "Nullable(Float64)",
+      "source_path": "longitude",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "os",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "os",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "page_version",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "page_version",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "timestamp",
+      "clickhouse_type": "DateTime",
+      "source_path": "timestamp",
+      "semantic_role": "timestamp",
+      "is_nullable": false
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "user_id",
+      "clickhouse_type": "String",
+      "source_path": "user_id",
+      "semantic_role": "entity_id",
+      "is_nullable": false
+    },
+    {
+      "table_name": "destination_card_clicked",
+      "column_name": "visa_type",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "visa_type",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "app_session_id",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "app_session_id",
+      "semantic_role": "entity_id",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "app_version",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "app_version",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "application_id",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "application_id",
+      "semantic_role": "entity_id",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "capture_mode",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "capture_mode",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "citizenship",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "citizenship",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "city",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "city",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "client_ip",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "client_ip",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "client_lib",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "client_lib",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "co_travelers",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "co_travelers",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "destination",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "destination",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "device",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "device",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "device_type",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "device_type",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "doc_type",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "doc_type",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "duplicate_id",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "duplicate_id",
+      "semantic_role": "entity_id",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "failed_attempt_threshold",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "failed_attempt_threshold",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "fbclid",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "fbclid",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "funnel_type",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "funnel_type",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "gad_source",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "gad_source",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "gclid",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "gclid",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "geoip_country_code",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "geoip_country_code",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "geoip_subdivision_1_code",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "geoip_subdivision_1_code",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "id",
+      "clickhouse_type": "UUID",
+      "source_path": "id",
+      "semantic_role": "metric_value",
+      "is_nullable": false
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "is_back_filled",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_back_filled",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "is_crossed_failed_attempt_threshold",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_crossed_failed_attempt_threshold",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "is_enterprise",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_enterprise",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "is_guest",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_guest",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "is_referral",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_referral",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "language",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "language",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "latitude",
+      "clickhouse_type": "Nullable(Float64)",
+      "source_path": "latitude",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "locale",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "locale",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "longitude",
+      "clickhouse_type": "Nullable(Float64)",
+      "source_path": "longitude",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "os",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "os",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "retry_count",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "retry_count",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "scan_mode",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "scan_mode",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "timestamp",
+      "clickhouse_type": "DateTime",
+      "source_path": "timestamp",
+      "semantic_role": "timestamp",
+      "is_nullable": false
+    },
+    {
+      "table_name": "document_uploaded",
+      "column_name": "user_id",
+      "clickhouse_type": "String",
+      "source_path": "user_id",
+      "semantic_role": "entity_id",
+      "is_nullable": false
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "app_session_id",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "app_session_id",
+      "semantic_role": "entity_id",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "app_version",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "app_version",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "application_id",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "application_id",
+      "semantic_role": "entity_id",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "citizenship",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "citizenship",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "city",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "city",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "client_ip",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "client_ip",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "client_lib",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "client_lib",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "co_travelers",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "co_travelers",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "destination",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "destination",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "device",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "device",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "device_type",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "device_type",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "duplicate_id",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "duplicate_id",
+      "semantic_role": "entity_id",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "fbclid",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "fbclid",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "funnel_type",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "funnel_type",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "gad_source",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "gad_source",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "gclid",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "gclid",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "geoip_country_code",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "geoip_country_code",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "geoip_subdivision_1_code",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "geoip_subdivision_1_code",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "id",
+      "clickhouse_type": "UUID",
+      "source_path": "id",
+      "semantic_role": "metric_value",
+      "is_nullable": false
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "is_back_filled",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_back_filled",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "is_enterprise",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_enterprise",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "is_guest",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_guest",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "is_referral",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_referral",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "language",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "language",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "latitude",
+      "clickhouse_type": "Nullable(Float64)",
+      "source_path": "latitude",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "locale",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "locale",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "longitude",
+      "clickhouse_type": "Nullable(Float64)",
+      "source_path": "longitude",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "os",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "os",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "page_version",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "page_version",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "scroll_depth_pct",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "scroll_depth_pct",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "time_on_page_s",
+      "clickhouse_type": "Nullable(UInt16)",
+      "source_path": "time_on_page_s",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "timestamp",
+      "clickhouse_type": "DateTime",
+      "source_path": "timestamp",
+      "semantic_role": "timestamp",
+      "is_nullable": false
+    },
+    {
+      "table_name": "landing_page_scrolled",
+      "column_name": "user_id",
+      "clickhouse_type": "String",
+      "source_path": "user_id",
+      "semantic_role": "entity_id",
+      "is_nullable": false
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "amount",
+      "clickhouse_type": "Nullable(Float64)",
+      "source_path": "amount",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "app_session_id",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "app_session_id",
+      "semantic_role": "entity_id",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "app_version",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "app_version",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "application_id",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "application_id",
+      "semantic_role": "entity_id",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "citizenship",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "citizenship",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "city",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "city",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "client_ip",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "client_ip",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "client_lib",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "client_lib",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "co_travelers",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "co_travelers",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "coupon_applied",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "coupon_applied",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "currency",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "currency",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "destination",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "destination",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "device",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "device",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "device_type",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "device_type",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "duplicate_id",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "duplicate_id",
+      "semantic_role": "entity_id",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "fbclid",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "fbclid",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "funnel_type",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "funnel_type",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "gad_source",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "gad_source",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "gclid",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "gclid",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "geoip_country_code",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "geoip_country_code",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "geoip_subdivision_1_code",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "geoip_subdivision_1_code",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "id",
+      "clickhouse_type": "UUID",
+      "source_path": "id",
+      "semantic_role": "metric_value",
+      "is_nullable": false
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "is_back_filled",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_back_filled",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "is_enterprise",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_enterprise",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "is_guest",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_guest",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "is_referral",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_referral",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "language",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "language",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "latitude",
+      "clickhouse_type": "Nullable(Float64)",
+      "source_path": "latitude",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "locale",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "locale",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "longitude",
+      "clickhouse_type": "Nullable(Float64)",
+      "source_path": "longitude",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "os",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "os",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "payment_method",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "payment_method",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "plan_selected",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "plan_selected",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "timestamp",
+      "clickhouse_type": "DateTime",
+      "source_path": "timestamp",
+      "semantic_role": "timestamp",
+      "is_nullable": false
+    },
+    {
+      "table_name": "pay_now_clicked",
+      "column_name": "user_id",
+      "clickhouse_type": "String",
+      "source_path": "user_id",
+      "semantic_role": "entity_id",
+      "is_nullable": false
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "app_session_id",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "app_session_id",
+      "semantic_role": "entity_id",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "app_version",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "app_version",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "application_id",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "application_id",
+      "semantic_role": "entity_id",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "citizenship",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "citizenship",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "city",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "city",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "client_ip",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "client_ip",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "client_lib",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "client_lib",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "co_travelers",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "co_travelers",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "coupon_applied",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "coupon_applied",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "coupon_name",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "coupon_name",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "currency",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "currency",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "destination",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "destination",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "device",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "device",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "device_type",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "device_type",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "discount_amount",
+      "clickhouse_type": "Nullable(Float64)",
+      "source_path": "discount_amount",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "duplicate_id",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "duplicate_id",
+      "semantic_role": "entity_id",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "fbclid",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "fbclid",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "funnel_type",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "funnel_type",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "gad_source",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "gad_source",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "gclid",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "gclid",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "geoip_country_code",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "geoip_country_code",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "geoip_subdivision_1_code",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "geoip_subdivision_1_code",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "id",
+      "clickhouse_type": "UUID",
+      "source_path": "id",
+      "semantic_role": "metric_value",
+      "is_nullable": false
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "insurance_added",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "insurance_added",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "insurance_amount",
+      "clickhouse_type": "Nullable(Float64)",
+      "source_path": "insurance_amount",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "is_back_filled",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_back_filled",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "is_enterprise",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_enterprise",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "is_guest",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_guest",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "is_referral",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_referral",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "language",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "language",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "latitude",
+      "clickhouse_type": "Nullable(Float64)",
+      "source_path": "latitude",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "locale",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "locale",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "longitude",
+      "clickhouse_type": "Nullable(Float64)",
+      "source_path": "longitude",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "os",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "os",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "plan_selected",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "plan_selected",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "timestamp",
+      "clickhouse_type": "DateTime",
+      "source_path": "timestamp",
+      "semantic_role": "timestamp",
+      "is_nullable": false
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "user_id",
+      "clickhouse_type": "String",
+      "source_path": "user_id",
+      "semantic_role": "entity_id",
+      "is_nullable": false
+    },
+    {
+      "table_name": "purchase_completed",
+      "column_name": "value",
+      "clickhouse_type": "Nullable(Float64)",
+      "source_path": "value",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "app_session_id",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "app_session_id",
+      "semantic_role": "entity_id",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "app_version",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "app_version",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "application_id",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "application_id",
+      "semantic_role": "entity_id",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "citizenship",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "citizenship",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "city",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "city",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "client_ip",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "client_ip",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "client_lib",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "client_lib",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "co_travelers",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "co_travelers",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "destination",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "destination",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "device",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "device",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "device_type",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "device_type",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "duplicate_id",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "duplicate_id",
+      "semantic_role": "entity_id",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "fbclid",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "fbclid",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "funnel_type",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "funnel_type",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "gad_source",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "gad_source",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "gclid",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "gclid",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "geoip_country_code",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "geoip_country_code",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "geoip_subdivision_1_code",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "geoip_subdivision_1_code",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "id",
+      "clickhouse_type": "UUID",
+      "source_path": "id",
+      "semantic_role": "metric_value",
+      "is_nullable": false
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "is_back_filled",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_back_filled",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "is_enterprise",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_enterprise",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "is_guest",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_guest",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "is_referral",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "is_referral",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "language",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "language",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "latitude",
+      "clickhouse_type": "Nullable(Float64)",
+      "source_path": "latitude",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "locale",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "locale",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "longitude",
+      "clickhouse_type": "Nullable(Float64)",
+      "source_path": "longitude",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "os",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "os",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "results_count",
+      "clickhouse_type": "Nullable(UInt16)",
+      "source_path": "results_count",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "search_term",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "search_term",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "source",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "source",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "timestamp",
+      "clickhouse_type": "DateTime",
+      "source_path": "timestamp",
+      "semantic_role": "timestamp",
+      "is_nullable": false
+    },
+    {
+      "table_name": "search_typed",
+      "column_name": "user_id",
+      "clickhouse_type": "String",
+      "source_path": "user_id",
+      "semantic_role": "entity_id",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.abandoned_checkout_recovery_events",
+      "column_name": "app_version",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "app_version",
+      "semantic_role": "dimension",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.abandoned_checkout_recovery_events",
+      "column_name": "application_id",
+      "clickhouse_type": "String",
+      "source_path": "application_id",
+      "semantic_role": "entity_id",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.abandoned_checkout_recovery_events",
+      "column_name": "channel",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "channel",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.abandoned_checkout_recovery_events",
+      "column_name": "city",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "city",
+      "semantic_role": "dimension",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.abandoned_checkout_recovery_events",
+      "column_name": "client_lib",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "client_lib",
+      "semantic_role": "dimension",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.abandoned_checkout_recovery_events",
+      "column_name": "destination",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "destination",
+      "semantic_role": "dimension",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.abandoned_checkout_recovery_events",
+      "column_name": "device_type",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "device_type",
+      "semantic_role": "dimension",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.abandoned_checkout_recovery_events",
+      "column_name": "drop_step",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "drop_step",
+      "semantic_role": "dimension",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.abandoned_checkout_recovery_events",
+      "column_name": "event_id",
+      "clickhouse_type": "String",
+      "source_path": "id",
+      "semantic_role": "entity_id",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.abandoned_checkout_recovery_events",
+      "column_name": "event_name",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "event",
+      "semantic_role": "event_name",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.abandoned_checkout_recovery_events",
+      "column_name": "geoip_country_code",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "geoip_country_code",
+      "semantic_role": "metric_value",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.abandoned_checkout_recovery_events",
+      "column_name": "hours_since_drop",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "hours_since_drop",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.abandoned_checkout_recovery_events",
+      "column_name": "ingested_at",
+      "clickhouse_type": "DateTime DEFAULT now()",
+      "source_path": null,
+      "semantic_role": "operational",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.abandoned_checkout_recovery_events",
+      "column_name": "job_id",
+      "clickhouse_type": "String",
+      "source_path": null,
+      "semantic_role": "operational",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.abandoned_checkout_recovery_events",
+      "column_name": "os",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "os",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.abandoned_checkout_recovery_events",
+      "column_name": "raw_json",
+      "clickhouse_type": "String",
+      "source_path": null,
+      "semantic_role": "raw_payload",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.abandoned_checkout_recovery_events",
+      "column_name": "timestamp",
+      "clickhouse_type": "DateTime64(3)",
+      "source_path": "timestamp",
+      "semantic_role": "timestamp",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.abandoned_checkout_recovery_events",
+      "column_name": "user_id",
+      "clickhouse_type": "String",
+      "source_path": "user_id",
+      "semantic_role": "entity_id",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.express_checkout_events",
+      "column_name": "app_version",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "app_version",
+      "semantic_role": "dimension",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.express_checkout_events",
+      "column_name": "application_id",
+      "clickhouse_type": "String",
+      "source_path": "application_id",
+      "semantic_role": "entity_id",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.express_checkout_events",
+      "column_name": "city",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "city",
+      "semantic_role": "dimension",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.express_checkout_events",
+      "column_name": "client_lib",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "client_lib",
+      "semantic_role": "dimension",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.express_checkout_events",
+      "column_name": "currency",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "currency",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.express_checkout_events",
+      "column_name": "destination",
+      "clickhouse_type": "String",
+      "source_path": "destination",
+      "semantic_role": "dimension",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.express_checkout_events",
+      "column_name": "device_type",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "device_type",
+      "semantic_role": "dimension",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.express_checkout_events",
+      "column_name": "eligible",
+      "clickhouse_type": "Nullable(Bool)",
+      "source_path": "eligible",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.express_checkout_events",
+      "column_name": "event_id",
+      "clickhouse_type": "String",
+      "source_path": "id",
+      "semantic_role": "entity_id",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.express_checkout_events",
+      "column_name": "event_name",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "event",
+      "semantic_role": "event_name",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.express_checkout_events",
+      "column_name": "geoip_country_code",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "geoip_country_code",
+      "semantic_role": "metric_value",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.express_checkout_events",
+      "column_name": "ingested_at",
+      "clickhouse_type": "DateTime DEFAULT now()",
+      "source_path": null,
+      "semantic_role": "operational",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.express_checkout_events",
+      "column_name": "job_id",
+      "clickhouse_type": "String",
+      "source_path": null,
+      "semantic_role": "operational",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.express_checkout_events",
+      "column_name": "os",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "os",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.express_checkout_events",
+      "column_name": "otp_attempts",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "otp_attempts",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.express_checkout_events",
+      "column_name": "otp_success",
+      "clickhouse_type": "Nullable(Bool)",
+      "source_path": "otp_success",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.express_checkout_events",
+      "column_name": "payment_amount",
+      "clickhouse_type": "Nullable(Float64)",
+      "source_path": "payment.amount",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.express_checkout_events",
+      "column_name": "payment_currency",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "payment.currency",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.express_checkout_events",
+      "column_name": "payment_latency_ms",
+      "clickhouse_type": "Nullable(UInt32)",
+      "source_path": "payment.latency_ms",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.express_checkout_events",
+      "column_name": "raw_json",
+      "clickhouse_type": "String",
+      "source_path": null,
+      "semantic_role": "raw_payload",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.express_checkout_events",
+      "column_name": "saved_method_type",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "saved_method_type",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.express_checkout_events",
+      "column_name": "shown_amount",
+      "clickhouse_type": "Nullable(Float64)",
+      "source_path": "shown_amount",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.express_checkout_events",
+      "column_name": "timestamp",
+      "clickhouse_type": "DateTime64(3)",
+      "source_path": "timestamp",
+      "semantic_role": "timestamp",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.express_checkout_events",
+      "column_name": "user_id",
+      "clickhouse_type": "String",
+      "source_path": "user_id",
+      "semantic_role": "entity_id",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.group_family_events",
+      "column_name": "app_version",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "app_version",
+      "semantic_role": "dimension",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.group_family_events",
+      "column_name": "application_id",
+      "clickhouse_type": "String",
+      "source_path": "application_id",
+      "semantic_role": "entity_id",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.group_family_events",
+      "column_name": "city",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "city",
+      "semantic_role": "dimension",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.group_family_events",
+      "column_name": "client_lib",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "client_lib",
+      "semantic_role": "dimension",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.group_family_events",
+      "column_name": "destination",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "destination",
+      "semantic_role": "dimension",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.group_family_events",
+      "column_name": "device_type",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "device_type",
+      "semantic_role": "dimension",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.group_family_events",
+      "column_name": "docs_complete",
+      "clickhouse_type": "Nullable(Bool)",
+      "source_path": "docs_complete",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.group_family_events",
+      "column_name": "event_id",
+      "clickhouse_type": "String",
+      "source_path": "id",
+      "semantic_role": "entity_id",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.group_family_events",
+      "column_name": "event_name",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "event",
+      "semantic_role": "event_name",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.group_family_events",
+      "column_name": "geoip_country_code",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "geoip_country_code",
+      "semantic_role": "metric_value",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.group_family_events",
+      "column_name": "group_id",
+      "clickhouse_type": "String",
+      "source_path": "group_id",
+      "semantic_role": "entity_id",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.group_family_events",
+      "column_name": "group_size",
+      "clickhouse_type": "UInt8",
+      "source_path": "group_size",
+      "semantic_role": "metric_value",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.group_family_events",
+      "column_name": "ingested_at",
+      "clickhouse_type": "DateTime DEFAULT now()",
+      "source_path": null,
+      "semantic_role": "operational",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.group_family_events",
+      "column_name": "job_id",
+      "clickhouse_type": "String",
+      "source_path": null,
+      "semantic_role": "operational",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.group_family_events",
+      "column_name": "os",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "os",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.group_family_events",
+      "column_name": "raw_json",
+      "clickhouse_type": "String",
+      "source_path": null,
+      "semantic_role": "raw_payload",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.group_family_events",
+      "column_name": "relation",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "relation",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.group_family_events",
+      "column_name": "timestamp",
+      "clickhouse_type": "DateTime64(3)",
+      "source_path": "timestamp",
+      "semantic_role": "timestamp",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.group_family_events",
+      "column_name": "traveller_index",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "traveller_index",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.group_family_events",
+      "column_name": "travellers_submitted",
+      "clickhouse_type": "Nullable(UInt8)",
+      "source_path": "travellers_submitted",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.group_family_events",
+      "column_name": "user_id",
+      "clickhouse_type": "String",
+      "source_path": "user_id",
+      "semantic_role": "entity_id",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.instant_forex_events",
+      "column_name": "addon_value_inr",
+      "clickhouse_type": "Nullable(Float64)",
+      "source_path": "addon_value_inr",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.instant_forex_events",
+      "column_name": "amount",
+      "clickhouse_type": "Nullable(Float64)",
+      "source_path": "amount",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.instant_forex_events",
+      "column_name": "app_version",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "app_version",
+      "semantic_role": "dimension",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.instant_forex_events",
+      "column_name": "application_id",
+      "clickhouse_type": "String",
+      "source_path": "application_id",
+      "semantic_role": "entity_id",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.instant_forex_events",
+      "column_name": "city",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "city",
+      "semantic_role": "dimension",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.instant_forex_events",
+      "column_name": "client_lib",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "client_lib",
+      "semantic_role": "dimension",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.instant_forex_events",
+      "column_name": "destination",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "destination",
+      "semantic_role": "dimension",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.instant_forex_events",
+      "column_name": "device_type",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "device_type",
+      "semantic_role": "dimension",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.instant_forex_events",
+      "column_name": "event_id",
+      "clickhouse_type": "String",
+      "source_path": "id",
+      "semantic_role": "entity_id",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.instant_forex_events",
+      "column_name": "event_name",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "event",
+      "semantic_role": "event_name",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.instant_forex_events",
+      "column_name": "from_currency",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "from_currency",
+      "semantic_role": "dimension",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.instant_forex_events",
+      "column_name": "fx_rate",
+      "clickhouse_type": "Nullable(Float64)",
+      "source_path": "fx_rate",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.instant_forex_events",
+      "column_name": "geoip_country_code",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "geoip_country_code",
+      "semantic_role": "metric_value",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.instant_forex_events",
+      "column_name": "ingested_at",
+      "clickhouse_type": "DateTime DEFAULT now()",
+      "source_path": null,
+      "semantic_role": "operational",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.instant_forex_events",
+      "column_name": "job_id",
+      "clickhouse_type": "String",
+      "source_path": null,
+      "semantic_role": "operational",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.instant_forex_events",
+      "column_name": "os",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "os",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.instant_forex_events",
+      "column_name": "raw_json",
+      "clickhouse_type": "String",
+      "source_path": null,
+      "semantic_role": "raw_payload",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.instant_forex_events",
+      "column_name": "timestamp",
+      "clickhouse_type": "DateTime64(3)",
+      "source_path": "timestamp",
+      "semantic_role": "timestamp",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.instant_forex_events",
+      "column_name": "to_currency",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "to_currency",
+      "semantic_role": "dimension",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.instant_forex_events",
+      "column_name": "user_id",
+      "clickhouse_type": "String",
+      "source_path": "user_id",
+      "semantic_role": "entity_id",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.status_sharing_events",
+      "column_name": "app_version",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "app_version",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.status_sharing_events",
+      "column_name": "application_id",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "application_id",
+      "semantic_role": "entity_id",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.status_sharing_events",
+      "column_name": "channel",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "channel",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.status_sharing_events",
+      "column_name": "city",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "city",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.status_sharing_events",
+      "column_name": "client_lib",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "client_lib",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.status_sharing_events",
+      "column_name": "cta",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "cta",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.status_sharing_events",
+      "column_name": "destination",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "destination",
+      "semantic_role": "dimension",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.status_sharing_events",
+      "column_name": "device_type",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "device_type",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.status_sharing_events",
+      "column_name": "event_id",
+      "clickhouse_type": "String",
+      "source_path": "id",
+      "semantic_role": "entity_id",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.status_sharing_events",
+      "column_name": "event_name",
+      "clickhouse_type": "LowCardinality(String)",
+      "source_path": "event",
+      "semantic_role": "event_name",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.status_sharing_events",
+      "column_name": "geoip_country_code",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "geoip_country_code",
+      "semantic_role": "metric_value",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.status_sharing_events",
+      "column_name": "ingested_at",
+      "clickhouse_type": "DateTime DEFAULT now()",
+      "source_path": null,
+      "semantic_role": "operational",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.status_sharing_events",
+      "column_name": "job_id",
+      "clickhouse_type": "String",
+      "source_path": null,
+      "semantic_role": "operational",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.status_sharing_events",
+      "column_name": "os",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "os",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.status_sharing_events",
+      "column_name": "raw_json",
+      "clickhouse_type": "String",
+      "source_path": null,
+      "semantic_role": "raw_payload",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.status_sharing_events",
+      "column_name": "recipient_is_new_user",
+      "clickhouse_type": "Nullable(Bool)",
+      "source_path": "recipient_is_new_user",
+      "semantic_role": "boolean_flag",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.status_sharing_events",
+      "column_name": "share_id",
+      "clickhouse_type": "String",
+      "source_path": "share_id",
+      "semantic_role": "entity_id",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.status_sharing_events",
+      "column_name": "status_shared",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "status_shared",
+      "semantic_role": "dimension",
+      "is_nullable": true
+    },
+    {
+      "table_name": "silver.status_sharing_events",
+      "column_name": "timestamp",
+      "clickhouse_type": "DateTime64(3)",
+      "source_path": "timestamp",
+      "semantic_role": "timestamp",
+      "is_nullable": false
+    },
+    {
+      "table_name": "silver.status_sharing_events",
+      "column_name": "user_id",
+      "clickhouse_type": "Nullable(String)",
+      "source_path": "user_id",
+      "semantic_role": "entity_id",
+      "is_nullable": true
+    }
+  ],
+  "workflows": [
+    {
+      "feature_slug": "abandoned_checkout_recovery",
+      "table_name": "silver.abandoned_checkout_recovery_events",
+      "workflow_type": "recovery",
+      "start_event": "abandonment_detected",
+      "success_event": "reconverted",
+      "primary_entity": "application_id",
+      "primary_entity_column": "application_id",
+      "segment_columns": [
+        "app_version",
+        "channel",
+        "city",
+        "client_lib",
+        "destination",
+        "device_type",
+        "drop_step",
+        "os"
+      ]
+    },
+    {
+      "feature_slug": "base_conversion_funnel",
+      "table_name": "destination_card_clicked|application_started|document_uploaded|purchase_completed",
+      "workflow_type": "funnel",
+      "start_event": "destination_card_clicked",
+      "success_event": "purchase_completed",
+      "primary_entity": "application",
+      "primary_entity_column": "application_id",
+      "segment_columns": [
+        "device_type",
+        "os",
+        "geoip_country_code",
+        "destination",
+        "citizenship"
+      ]
+    },
+    {
+      "feature_slug": "express_checkout",
+      "table_name": "silver.express_checkout_events",
+      "workflow_type": "funnel",
+      "start_event": "express_checkout_shown",
+      "success_event": "express_payment_confirmed",
+      "primary_entity": "application_id",
+      "primary_entity_column": "application_id",
+      "segment_columns": [
+        "device_type",
+        "os",
+        "destination",
+        "client_lib",
+        "app_version",
+        "payment_currency",
+        "saved_method_type",
+        "city",
+        "currency"
+      ]
+    },
+    {
+      "feature_slug": "group_family",
+      "table_name": "silver.group_family_events",
+      "workflow_type": "funnel",
+      "start_event": "group_started",
+      "success_event": "group_submitted",
+      "primary_entity": "group_id",
+      "primary_entity_column": "group_id",
+      "segment_columns": [
+        "app_version",
+        "city",
+        "client_lib",
+        "destination",
+        "device_type",
+        "os",
+        "relation"
+      ]
+    },
+    {
+      "feature_slug": "instant_forex",
+      "table_name": "silver.instant_forex_events",
+      "workflow_type": "funnel",
+      "start_event": "forex_offer_shown",
+      "success_event": "forex_purchased",
+      "primary_entity": "application_id",
+      "primary_entity_column": "application_id",
+      "segment_columns": [
+        "app_version",
+        "city",
+        "client_lib",
+        "destination",
+        "device_type",
+        "from_currency",
+        "os",
+        "to_currency"
+      ]
+    },
+    {
+      "feature_slug": "status_sharing",
+      "table_name": "silver.status_sharing_events",
+      "workflow_type": "referral_loop",
+      "start_event": "share_clicked",
+      "success_event": "recipient_cta_clicked",
+      "primary_entity": "share_id",
+      "primary_entity_column": "share_id",
+      "segment_columns": [
+        "app_version",
+        "channel",
+        "city",
+        "client_lib",
+        "cta",
+        "destination",
+        "device_type",
+        "os",
+        "status_shared"
+      ]
+    }
+  ],
+  "metrics": [
+    {
+      "metric_name": "abandonment_detected_to_reconverted_conversion",
+      "feature_slug": "abandoned_checkout_recovery",
+      "formula_sql": "uniqIf(application_id, event_name = \\'reconverted\\') / nullIf(uniqIf(application_id, event_name = \\'abandonment_detected\\'), 0) FROM silver.abandoned_checkout_recovery_events",
+      "grain": "application_id",
+      "segment_columns": [
+        "app_version",
+        "channel",
+        "city",
+        "client_lib",
+        "destination",
+        "device_type",
+        "drop_step",
+        "os"
+      ]
+    },
+    {
+      "metric_name": "channel_effectiveness_open_click_reconvert",
+      "feature_slug": "abandoned_checkout_recovery",
+      "formula_sql": "uniqIf(application_id, event_name = \\'reconverted\\') / nullIf(uniqIf(application_id, event_name = \\'abandonment_detected\\'), 0) FROM silver.abandoned_checkout_recovery_events",
+      "grain": "application_id",
+      "segment_columns": [
+        "app_version",
+        "channel",
+        "city",
+        "client_lib",
+        "destination",
+        "device_type",
+        "drop_step",
+        "os"
+      ]
+    },
+    {
+      "metric_name": "reconversion_rate_by_drop_step",
+      "feature_slug": "abandoned_checkout_recovery",
+      "formula_sql": "uniqIf(application_id, event_name = \\'reconverted\\') / nullIf(uniqIf(application_id, event_name = \\'abandonment_detected\\'), 0) FROM silver.abandoned_checkout_recovery_events",
+      "grain": "application_id",
+      "segment_columns": [
+        "app_version",
+        "channel",
+        "city",
+        "client_lib",
+        "destination",
+        "device_type",
+        "drop_step",
+        "os"
+      ]
+    },
+    {
+      "metric_name": "segment_cuts_by_device_geo_destination",
+      "feature_slug": "abandoned_checkout_recovery",
+      "formula_sql": "uniqIf(application_id, event_name = \\'reconverted\\') / nullIf(uniqIf(application_id, event_name = \\'abandonment_detected\\'), 0) FROM silver.abandoned_checkout_recovery_events",
+      "grain": "application_id",
+      "segment_columns": [
+        "app_version",
+        "channel",
+        "city",
+        "client_lib",
+        "destination",
+        "device_type",
+        "drop_step",
+        "os"
+      ]
+    },
+    {
+      "metric_name": "timing_effect_on_reconversion",
+      "feature_slug": "abandoned_checkout_recovery",
+      "formula_sql": "uniqIf(application_id, event_name = \\'reconverted\\') / nullIf(uniqIf(application_id, event_name = \\'abandonment_detected\\'), 0) FROM silver.abandoned_checkout_recovery_events",
+      "grain": "application_id",
+      "segment_columns": [
+        "app_version",
+        "channel",
+        "city",
+        "client_lib",
+        "destination",
+        "device_type",
+        "drop_step",
+        "os"
+      ]
+    },
+    {
+      "metric_name": "funnel_conversion_rate",
+      "feature_slug": "base_conversion_funnel",
+      "formula_sql": "uniq(purchase_completed.user_id) / nullIf(uniq(application_started.user_id), 0)",
+      "grain": "user",
+      "segment_columns": [
+        "device_type",
+        "os",
+        "geoip_country_code",
+        "destination"
+      ]
+    },
+    {
+      "metric_name": "passport_capture_pass_rate",
+      "feature_slug": "base_conversion_funnel",
+      "formula_sql": "countIf(is_crossed_failed_attempt_threshold = 0) / nullIf(count(), 0) FROM document_uploaded",
+      "grain": "event",
+      "segment_columns": [
+        "device_type",
+        "os",
+        "destination"
+      ]
+    },
+    {
+      "metric_name": "revenue_per_conversion",
+      "feature_slug": "base_conversion_funnel",
+      "formula_sql": "avg(value) FROM purchase_completed",
+      "grain": "purchase",
+      "segment_columns": [
+        "currency",
+        "destination"
+      ]
+    },
+    {
+      "metric_name": "Adoption rate by device, geo, saved_method_type",
+      "feature_slug": "express_checkout",
+      "formula_sql": "uniqIf(application_id, event_name = \\'express_payment_confirmed\\') / nullIf(uniqIf(application_id, event_name = \\'express_checkout_shown\\'), 0) FROM silver.express_checkout_events",
+      "grain": "application_id",
+      "segment_columns": [
+        "device_type",
+        "os",
+        "destination",
+        "client_lib",
+        "app_version",
+        "payment_currency",
+        "saved_method_type",
+        "city",
+        "currency"
+      ]
+    },
+    {
+      "metric_name": "Conversion lift vs standard checkout",
+      "feature_slug": "express_checkout",
+      "formula_sql": "uniqIf(application_id, event_name = \\'express_payment_confirmed\\') / nullIf(uniqIf(application_id, event_name = \\'express_checkout_shown\\'), 0) FROM silver.express_checkout_events",
+      "grain": "application_id",
+      "segment_columns": [
+        "device_type",
+        "os",
+        "destination",
+        "client_lib",
+        "app_version",
+        "payment_currency",
+        "saved_method_type",
+        "city",
+        "currency"
+      ]
+    },
+    {
+      "metric_name": "OTP success rate by device_type/os/geoip_country_code",
+      "feature_slug": "express_checkout",
+      "formula_sql": "uniqIf(application_id, event_name = \\'express_payment_confirmed\\') / nullIf(uniqIf(application_id, event_name = \\'express_checkout_shown\\'), 0) FROM silver.express_checkout_events",
+      "grain": "application_id",
+      "segment_columns": [
+        "device_type",
+        "os",
+        "destination",
+        "client_lib",
+        "app_version",
+        "payment_currency",
+        "saved_method_type",
+        "city",
+        "currency"
+      ]
+    },
+    {
+      "metric_name": "Payment latency (shown to confirmed)",
+      "feature_slug": "express_checkout",
+      "formula_sql": "uniqIf(application_id, event_name = \\'express_payment_confirmed\\') / nullIf(uniqIf(application_id, event_name = \\'express_checkout_shown\\'), 0) FROM silver.express_checkout_events",
+      "grain": "application_id",
+      "segment_columns": [
+        "device_type",
+        "os",
+        "destination",
+        "client_lib",
+        "app_version",
+        "payment_currency",
+        "saved_method_type",
+        "city",
+        "currency"
+      ]
+    },
+    {
+      "metric_name": "express_checkout_shown_to_express_payment_confirmed_conversion",
+      "feature_slug": "express_checkout",
+      "formula_sql": "uniqIf(application_id, event_name = \\'express_payment_confirmed\\') / nullIf(uniqIf(application_id, event_name = \\'express_checkout_shown\\'), 0) FROM silver.express_checkout_events",
+      "grain": "application_id",
+      "segment_columns": [
+        "device_type",
+        "os",
+        "destination",
+        "client_lib",
+        "app_version",
+        "payment_currency",
+        "saved_method_type",
+        "city",
+        "currency"
+      ]
+    },
+    {
+      "metric_name": "Add/remove churn: travellers added vs removed per group",
+      "feature_slug": "group_family",
+      "formula_sql": "uniqIf(group_id, event_name = \\'group_submitted\\') / nullIf(uniqIf(group_id, event_name = \\'group_started\\'), 0) FROM silver.group_family_events",
+      "grain": "group_id",
+      "segment_columns": [
+        "app_version",
+        "city",
+        "client_lib",
+        "destination",
+        "device_type",
+        "os",
+        "relation"
+      ]
+    },
+    {
+      "metric_name": "Completion rate (group_started → group_submitted) by group size",
+      "feature_slug": "group_family",
+      "formula_sql": "uniqIf(group_id, event_name = \\'group_submitted\\') / nullIf(uniqIf(group_id, event_name = \\'group_started\\'), 0) FROM silver.group_family_events",
+      "grain": "group_id",
+      "segment_columns": [
+        "app_version",
+        "city",
+        "client_lib",
+        "destination",
+        "device_type",
+        "os",
+        "relation"
+      ]
+    },
+    {
+      "metric_name": "Destinations/segments driving group applications",
+      "feature_slug": "group_family",
+      "formula_sql": "uniqIf(group_id, event_name = \\'group_submitted\\') / nullIf(uniqIf(group_id, event_name = \\'group_started\\'), 0) FROM silver.group_family_events",
+      "grain": "group_id",
+      "segment_columns": [
+        "app_version",
+        "city",
+        "client_lib",
+        "destination",
+        "device_type",
+        "os",
+        "relation"
+      ]
+    },
+    {
+      "metric_name": "Per-traveller document completion bottleneck for large groups",
+      "feature_slug": "group_family",
+      "formula_sql": "uniqIf(group_id, event_name = \\'group_submitted\\') / nullIf(uniqIf(group_id, event_name = \\'group_started\\'), 0) FROM silver.group_family_events",
+      "grain": "group_id",
+      "segment_columns": [
+        "app_version",
+        "city",
+        "client_lib",
+        "destination",
+        "device_type",
+        "os",
+        "relation"
+      ]
+    },
+    {
+      "metric_name": "group_started_to_group_submitted_conversion",
+      "feature_slug": "group_family",
+      "formula_sql": "uniqIf(group_id, event_name = \\'group_submitted\\') / nullIf(uniqIf(group_id, event_name = \\'group_started\\'), 0) FROM silver.group_family_events",
+      "grain": "group_id",
+      "segment_columns": [
+        "app_version",
+        "city",
+        "client_lib",
+        "destination",
+        "device_type",
+        "os",
+        "relation"
+      ]
+    },
+    {
+      "metric_name": "aov_uplift_distribution_of_addon_value_inr",
+      "feature_slug": "instant_forex",
+      "formula_sql": "uniqIf(application_id, event_name = \\'forex_purchased\\') / nullIf(uniqIf(application_id, event_name = \\'forex_offer_shown\\'), 0) FROM silver.instant_forex_events",
+      "grain": "application_id",
+      "segment_columns": [
+        "app_version",
+        "city",
+        "client_lib",
+        "destination",
+        "device_type",
+        "from_currency",
+        "os",
+        "to_currency"
+      ]
+    },
+    {
+      "metric_name": "attach_rate_overall_and_by_destination",
+      "feature_slug": "instant_forex",
+      "formula_sql": "uniqIf(application_id, event_name = \\'forex_purchased\\') / nullIf(uniqIf(application_id, event_name = \\'forex_offer_shown\\'), 0) FROM silver.instant_forex_events",
+      "grain": "application_id",
+      "segment_columns": [
+        "app_version",
+        "city",
+        "client_lib",
+        "destination",
+        "device_type",
+        "from_currency",
+        "os",
+        "to_currency"
+      ]
+    },
+    {
+      "metric_name": "best_attach_destinations_and_currencies_by_segment",
+      "feature_slug": "instant_forex",
+      "formula_sql": "uniqIf(application_id, event_name = \\'forex_purchased\\') / nullIf(uniqIf(application_id, event_name = \\'forex_offer_shown\\'), 0) FROM silver.instant_forex_events",
+      "grain": "application_id",
+      "segment_columns": [
+        "app_version",
+        "city",
+        "client_lib",
+        "destination",
+        "device_type",
+        "from_currency",
+        "os",
+        "to_currency"
+      ]
+    },
+    {
+      "metric_name": "drop_points_offer_to_amount_entered_and_added_to_cart_to_purchased",
+      "feature_slug": "instant_forex",
+      "formula_sql": "uniqIf(application_id, event_name = \\'forex_purchased\\') / nullIf(uniqIf(application_id, event_name = \\'forex_offer_shown\\'), 0) FROM silver.instant_forex_events",
+      "grain": "application_id",
+      "segment_columns": [
+        "app_version",
+        "city",
+        "client_lib",
+        "destination",
+        "device_type",
+        "from_currency",
+        "os",
+        "to_currency"
+      ]
+    },
+    {
+      "metric_name": "forex_offer_shown_to_forex_purchased_conversion",
+      "feature_slug": "instant_forex",
+      "formula_sql": "uniqIf(application_id, event_name = \\'forex_purchased\\') / nullIf(uniqIf(application_id, event_name = \\'forex_offer_shown\\'), 0) FROM silver.instant_forex_events",
+      "grain": "application_id",
+      "segment_columns": [
+        "app_version",
+        "city",
+        "client_lib",
+        "destination",
+        "device_type",
+        "from_currency",
+        "os",
+        "to_currency"
+      ]
+    },
+    {
+      "metric_name": "Channel mix for new-user opens",
+      "feature_slug": "status_sharing",
+      "formula_sql": "uniqIf(share_id, event_name = \\'recipient_cta_clicked\\') / nullIf(uniqIf(share_id, event_name = \\'share_clicked\\'), 0) FROM silver.status_sharing_events",
+      "grain": "share_id",
+      "segment_columns": [
+        "app_version",
+        "channel",
+        "city",
+        "client_lib",
+        "cta",
+        "destination",
+        "device_type",
+        "os",
+        "status_shared"
+      ]
+    },
+    {
+      "metric_name": "Destination spread of shares",
+      "feature_slug": "status_sharing",
+      "formula_sql": "uniqIf(share_id, event_name = \\'recipient_cta_clicked\\') / nullIf(uniqIf(share_id, event_name = \\'share_clicked\\'), 0) FROM silver.status_sharing_events",
+      "grain": "share_id",
+      "segment_columns": [
+        "app_version",
+        "channel",
+        "city",
+        "client_lib",
+        "cta",
+        "destination",
+        "device_type",
+        "os",
+        "status_shared"
+      ]
+    },
+    {
+      "metric_name": "Recipient conversion rate (opens to CTA) for new users",
+      "feature_slug": "status_sharing",
+      "formula_sql": "uniqIf(share_id, event_name = \\'recipient_cta_clicked\\') / nullIf(uniqIf(share_id, event_name = \\'share_clicked\\'), 0) FROM silver.status_sharing_events",
+      "grain": "share_id",
+      "segment_columns": [
+        "app_version",
+        "channel",
+        "city",
+        "client_lib",
+        "cta",
+        "destination",
+        "device_type",
+        "os",
+        "status_shared"
+      ]
+    },
+    {
+      "metric_name": "Share rate by status_shared",
+      "feature_slug": "status_sharing",
+      "formula_sql": "uniqIf(share_id, event_name = \\'recipient_cta_clicked\\') / nullIf(uniqIf(share_id, event_name = \\'share_clicked\\'), 0) FROM silver.status_sharing_events",
+      "grain": "share_id",
+      "segment_columns": [
+        "app_version",
+        "channel",
+        "city",
+        "client_lib",
+        "cta",
+        "destination",
+        "device_type",
+        "os",
+        "status_shared"
+      ]
+    },
+    {
+      "metric_name": "share_clicked_to_recipient_cta_clicked_conversion",
+      "feature_slug": "status_sharing",
+      "formula_sql": "uniqIf(share_id, event_name = \\'recipient_cta_clicked\\') / nullIf(uniqIf(share_id, event_name = \\'share_clicked\\'), 0) FROM silver.status_sharing_events",
+      "grain": "share_id",
+      "segment_columns": [
+        "app_version",
+        "channel",
+        "city",
+        "client_lib",
+        "cta",
+        "destination",
+        "device_type",
+        "os",
+        "status_shared"
+      ]
+    }
+  ],
+  "joins": [
+    {
+      "left_table": "application_started",
+      "left_column": "user_id",
+      "right_table": "auth_completed",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "application_started",
+      "left_column": "user_id",
+      "right_table": "destination_card_clicked",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "application_started",
+      "left_column": "application_id",
+      "right_table": "document_uploaded",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "application_started",
+      "left_column": "user_id",
+      "right_table": "document_uploaded",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "application_started",
+      "left_column": "user_id",
+      "right_table": "landing_page_scrolled",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "application_started",
+      "left_column": "application_id",
+      "right_table": "pay_now_clicked",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "application_started",
+      "left_column": "user_id",
+      "right_table": "pay_now_clicked",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "application_started",
+      "left_column": "application_id",
+      "right_table": "purchase_completed",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "application_started",
+      "left_column": "user_id",
+      "right_table": "purchase_completed",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "application_started",
+      "left_column": "user_id",
+      "right_table": "search_typed",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "auth_completed",
+      "left_column": "application_id",
+      "right_table": "application_started",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "auth_completed",
+      "left_column": "user_id",
+      "right_table": "application_started",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "auth_completed",
+      "left_column": "user_id",
+      "right_table": "destination_card_clicked",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "auth_completed",
+      "left_column": "application_id",
+      "right_table": "document_uploaded",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "auth_completed",
+      "left_column": "user_id",
+      "right_table": "document_uploaded",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "auth_completed",
+      "left_column": "user_id",
+      "right_table": "landing_page_scrolled",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "auth_completed",
+      "left_column": "application_id",
+      "right_table": "pay_now_clicked",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "auth_completed",
+      "left_column": "user_id",
+      "right_table": "pay_now_clicked",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "auth_completed",
+      "left_column": "application_id",
+      "right_table": "purchase_completed",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "auth_completed",
+      "left_column": "user_id",
+      "right_table": "purchase_completed",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "auth_completed",
+      "left_column": "user_id",
+      "right_table": "search_typed",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "destination_card_clicked",
+      "left_column": "application_id",
+      "right_table": "application_started",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "destination_card_clicked",
+      "left_column": "user_id",
+      "right_table": "application_started",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "destination_card_clicked",
+      "left_column": "user_id",
+      "right_table": "auth_completed",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "destination_card_clicked",
+      "left_column": "application_id",
+      "right_table": "document_uploaded",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "destination_card_clicked",
+      "left_column": "user_id",
+      "right_table": "document_uploaded",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "destination_card_clicked",
+      "left_column": "user_id",
+      "right_table": "landing_page_scrolled",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "destination_card_clicked",
+      "left_column": "application_id",
+      "right_table": "pay_now_clicked",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "destination_card_clicked",
+      "left_column": "user_id",
+      "right_table": "pay_now_clicked",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "destination_card_clicked",
+      "left_column": "application_id",
+      "right_table": "purchase_completed",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "destination_card_clicked",
+      "left_column": "user_id",
+      "right_table": "purchase_completed",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "destination_card_clicked",
+      "left_column": "user_id",
+      "right_table": "search_typed",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "document_uploaded",
+      "left_column": "application_id",
+      "right_table": "application_started",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "document_uploaded",
+      "left_column": "user_id",
+      "right_table": "application_started",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "document_uploaded",
+      "left_column": "user_id",
+      "right_table": "auth_completed",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "document_uploaded",
+      "left_column": "user_id",
+      "right_table": "destination_card_clicked",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "document_uploaded",
+      "left_column": "user_id",
+      "right_table": "landing_page_scrolled",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "document_uploaded",
+      "left_column": "application_id",
+      "right_table": "pay_now_clicked",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "document_uploaded",
+      "left_column": "user_id",
+      "right_table": "pay_now_clicked",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "document_uploaded",
+      "left_column": "application_id",
+      "right_table": "purchase_completed",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "document_uploaded",
+      "left_column": "user_id",
+      "right_table": "purchase_completed",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "document_uploaded",
+      "left_column": "user_id",
+      "right_table": "search_typed",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "landing_page_scrolled",
+      "left_column": "application_id",
+      "right_table": "application_started",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "landing_page_scrolled",
+      "left_column": "user_id",
+      "right_table": "application_started",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "landing_page_scrolled",
+      "left_column": "user_id",
+      "right_table": "auth_completed",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "landing_page_scrolled",
+      "left_column": "user_id",
+      "right_table": "destination_card_clicked",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "landing_page_scrolled",
+      "left_column": "application_id",
+      "right_table": "document_uploaded",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "landing_page_scrolled",
+      "left_column": "user_id",
+      "right_table": "document_uploaded",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "landing_page_scrolled",
+      "left_column": "application_id",
+      "right_table": "pay_now_clicked",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "landing_page_scrolled",
+      "left_column": "user_id",
+      "right_table": "pay_now_clicked",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "landing_page_scrolled",
+      "left_column": "application_id",
+      "right_table": "purchase_completed",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "landing_page_scrolled",
+      "left_column": "user_id",
+      "right_table": "purchase_completed",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "landing_page_scrolled",
+      "left_column": "user_id",
+      "right_table": "search_typed",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "pay_now_clicked",
+      "left_column": "application_id",
+      "right_table": "application_started",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "pay_now_clicked",
+      "left_column": "user_id",
+      "right_table": "application_started",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "pay_now_clicked",
+      "left_column": "user_id",
+      "right_table": "auth_completed",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "pay_now_clicked",
+      "left_column": "user_id",
+      "right_table": "destination_card_clicked",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "pay_now_clicked",
+      "left_column": "application_id",
+      "right_table": "document_uploaded",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "pay_now_clicked",
+      "left_column": "user_id",
+      "right_table": "document_uploaded",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "pay_now_clicked",
+      "left_column": "user_id",
+      "right_table": "landing_page_scrolled",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "pay_now_clicked",
+      "left_column": "application_id",
+      "right_table": "purchase_completed",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "pay_now_clicked",
+      "left_column": "user_id",
+      "right_table": "purchase_completed",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "pay_now_clicked",
+      "left_column": "user_id",
+      "right_table": "search_typed",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "purchase_completed",
+      "left_column": "application_id",
+      "right_table": "application_started",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "purchase_completed",
+      "left_column": "user_id",
+      "right_table": "application_started",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "purchase_completed",
+      "left_column": "user_id",
+      "right_table": "auth_completed",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "purchase_completed",
+      "left_column": "user_id",
+      "right_table": "destination_card_clicked",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "purchase_completed",
+      "left_column": "application_id",
+      "right_table": "document_uploaded",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "purchase_completed",
+      "left_column": "user_id",
+      "right_table": "document_uploaded",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "purchase_completed",
+      "left_column": "user_id",
+      "right_table": "landing_page_scrolled",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "purchase_completed",
+      "left_column": "application_id",
+      "right_table": "pay_now_clicked",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "purchase_completed",
+      "left_column": "user_id",
+      "right_table": "pay_now_clicked",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "purchase_completed",
+      "left_column": "user_id",
+      "right_table": "search_typed",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "search_typed",
+      "left_column": "application_id",
+      "right_table": "application_started",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "search_typed",
+      "left_column": "user_id",
+      "right_table": "application_started",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "search_typed",
+      "left_column": "user_id",
+      "right_table": "auth_completed",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "search_typed",
+      "left_column": "user_id",
+      "right_table": "destination_card_clicked",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "search_typed",
+      "left_column": "application_id",
+      "right_table": "document_uploaded",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "search_typed",
+      "left_column": "user_id",
+      "right_table": "document_uploaded",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "search_typed",
+      "left_column": "user_id",
+      "right_table": "landing_page_scrolled",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "search_typed",
+      "left_column": "application_id",
+      "right_table": "pay_now_clicked",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "search_typed",
+      "left_column": "user_id",
+      "right_table": "pay_now_clicked",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "search_typed",
+      "left_column": "application_id",
+      "right_table": "purchase_completed",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "search_typed",
+      "left_column": "user_id",
+      "right_table": "purchase_completed",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "silver.abandoned_checkout_recovery_events",
+      "left_column": "application_id",
+      "right_table": "application_started",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "silver.abandoned_checkout_recovery_events",
+      "left_column": "user_id",
+      "right_table": "application_started",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "silver.abandoned_checkout_recovery_events",
+      "left_column": "user_id",
+      "right_table": "auth_completed",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "silver.abandoned_checkout_recovery_events",
+      "left_column": "user_id",
+      "right_table": "destination_card_clicked",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "silver.abandoned_checkout_recovery_events",
+      "left_column": "application_id",
+      "right_table": "document_uploaded",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "silver.abandoned_checkout_recovery_events",
+      "left_column": "user_id",
+      "right_table": "document_uploaded",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "silver.abandoned_checkout_recovery_events",
+      "left_column": "user_id",
+      "right_table": "landing_page_scrolled",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "silver.abandoned_checkout_recovery_events",
+      "left_column": "application_id",
+      "right_table": "pay_now_clicked",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "silver.abandoned_checkout_recovery_events",
+      "left_column": "user_id",
+      "right_table": "pay_now_clicked",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "silver.abandoned_checkout_recovery_events",
+      "left_column": "application_id",
+      "right_table": "purchase_completed",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "silver.abandoned_checkout_recovery_events",
+      "left_column": "user_id",
+      "right_table": "purchase_completed",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "silver.abandoned_checkout_recovery_events",
+      "left_column": "user_id",
+      "right_table": "search_typed",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "silver.abandoned_checkout_recovery_events",
+      "left_column": "user_id",
+      "right_table": "silver.*",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.7
+    },
+    {
+      "left_table": "silver.express_checkout_events",
+      "left_column": "application_id",
+      "right_table": "application_started",
+      "right_column": "application_id",
+      "grain": "application",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "silver.express_checkout_events",
+      "left_column": "user_id",
+      "right_table": "application_started",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    },
+    {
+      "left_table": "silver.express_checkout_events",
+      "left_column": "user_id",
+      "right_table": "auth_completed",
+      "right_column": "user_id",
+      "grain": "user",
+      "confidence": 0.95
+    }
+  ],
+  "schema_quality": [
+    {
+      "table_name": "silver.abandoned_checkout_recovery_events",
+      "order_by": [
+        "timestamp",
+        "event_id"
+      ],
+      "partition_by": "toYYYYMM(timestamp)",
+      "ttl": "timestamp + INTERVAL 18 MONTH",
+      "materialized_views": [
+        "abandoned_checkout_recovery_events_daily_event_counts_mv",
+        "abandoned_checkout_recovery_events_daily_conversion_mv",
+        "abandoned_checkout_recovery_events_segment_success_mv"
+      ],
+      "validation_passed": true
+    },
+    {
+      "table_name": "silver.express_checkout_events",
+      "order_by": [
+        "timestamp",
+        "event_id"
+      ],
+      "partition_by": "toYYYYMM(timestamp)",
+      "ttl": "timestamp + INTERVAL 18 MONTH",
+      "materialized_views": [
+        "express_checkout_events_daily_event_counts_mv",
+        "express_checkout_events_daily_conversion_mv",
+        "express_checkout_events_segment_success_mv",
+        "express_checkout_events_latency_by_event_mv"
+      ],
+      "validation_passed": true
+    },
+    {
+      "table_name": "silver.group_family_events",
+      "order_by": [
+        "timestamp",
+        "event_id"
+      ],
+      "partition_by": "toYYYYMM(timestamp)",
+      "ttl": "timestamp + INTERVAL 18 MONTH",
+      "materialized_views": [
+        "group_family_events_daily_event_counts_mv",
+        "group_family_events_daily_conversion_mv",
+        "group_family_events_segment_success_mv"
+      ],
+      "validation_passed": true
+    },
+    {
+      "table_name": "silver.instant_forex_events",
+      "order_by": [
+        "timestamp",
+        "event_id"
+      ],
+      "partition_by": "toYYYYMM(timestamp)",
+      "ttl": "timestamp + INTERVAL 18 MONTH",
+      "materialized_views": [
+        "instant_forex_events_daily_event_counts_mv",
+        "instant_forex_events_daily_conversion_mv",
+        "instant_forex_events_segment_success_mv"
+      ],
+      "validation_passed": true
+    },
+    {
+      "table_name": "silver.status_sharing_events",
+      "order_by": [
+        "timestamp",
+        "event_id"
+      ],
+      "partition_by": "toYYYYMM(timestamp)",
+      "ttl": "timestamp + INTERVAL 18 MONTH",
+      "materialized_views": [
+        "status_sharing_events_daily_event_counts_mv",
+        "status_sharing_events_daily_conversion_mv",
+        "status_sharing_events_segment_success_mv"
+      ],
+      "validation_passed": true
+    }
+  ]
+}

@@ -158,7 +158,7 @@ async function main() {
 
   if (command === "serve") {
     const repoRoot = path.resolve(process.cwd(), "..");
-    let port = Number(process.env.REPORT_PORT ?? 8787);
+    let port = Number(process.env.PORT ?? process.env.REPORT_PORT ?? 8787);
     for (let i = 0; i < args.length; i += 1) {
       if (args[i] === "--port") {
         port = Number(args[i + 1] ?? port);

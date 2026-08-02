@@ -137,8 +137,9 @@ opencode.json
 .gemini/settings.json
 .grok/config.toml
 
-# Pipeline Output Artifacts
-backend/artifacts/
+# Pipeline Output Artifacts (keep folder for Docker COPY; contents stay local/gitignored)
+backend/artifacts/*
+!backend/artifacts/.gitkeep
 
 # ClickHouse-backed context replaces local context registry files
 backend/context/

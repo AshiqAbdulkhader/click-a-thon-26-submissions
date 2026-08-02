@@ -1,0 +1,27 @@
+{
+  "job_id": "20260802T000423_01_express_checkout",
+  "table": "silver.express_checkout_events",
+  "inserted_rows": 5507,
+  "validation": {
+    "passed": true,
+    "failures": [],
+    "expected_rows": 5507,
+    "actual_rows": 5507,
+    "expected_events": [
+      "express_checkout_selected",
+      "express_checkout_shown",
+      "express_payment_confirmed",
+      "otp_entered",
+      "saved_method_used"
+    ],
+    "actual_events": [
+      "express_checkout_selected",
+      "express_checkout_shown",
+      "express_payment_confirmed",
+      "otp_entered",
+      "saved_method_used"
+    ],
+    "timestamp_min_max": "2026-06-08 06:00:00.000\t2026-06-28 23:11:00.000"
+  },
+  "loaded_at": "2026-08-02T00:04:35.710Z"
+}

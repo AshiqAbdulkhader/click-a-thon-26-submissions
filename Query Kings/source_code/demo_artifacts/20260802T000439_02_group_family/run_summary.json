@@ -1,0 +1,20 @@
+{
+  "job_id": "20260802T000439_02_group_family",
+  "feature_slug": "group_family",
+  "table_name": "silver.group_family_events",
+  "row_count": 5453,
+  "event_names": [
+    "group_started",
+    "traveller_added",
+    "traveller_removed",
+    "group_submitted"
+  ],
+  "primary_entity": "group_id",
+  "success_event": "group_submitted",
+  "silver_loaded": true,
+  "silver_inserted_rows": 5453,
+  "artifacts": "/Users/shivamtaneja/projects/clickhouse/click-a-thon-26-submissions/Query Kings/source_code/backend/artifacts/20260802T000439_02_group_family",
+  "model": "openai/gpt-oss-20b",
+  "groq_used": true,
+  "langfuse_trace_id": "830e088251be129a22299de13b714491"
+}

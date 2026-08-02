@@ -1,0 +1,16 @@
+**/node_modules
+**/.git
+**/.env
+**/.env.*
+!**/.env.example
+**/frontend/dist
+**/*.log
+.october
+.claude
+.cursor
+
+# Huge dataset — load into ClickHouse Cloud once; do not ship in the image
+data/*.parquet
+data/*.ndjson
+
+# Keep artifacts (needed for overview UI). Do not ignore backend/artifacts.

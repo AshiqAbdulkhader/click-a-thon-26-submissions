@@ -1,0 +1,95 @@
+{
+  "table_name": "silver.abandoned_checkout_recovery_events",
+  "mappings": [
+    {
+      "column": "event_name",
+      "source_path": "event",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "event_id",
+      "source_path": "id",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "timestamp",
+      "source_path": "timestamp",
+      "transform": "parse ISO timestamp to DateTime64(3)"
+    },
+    {
+      "column": "job_id",
+      "source_path": null,
+      "transform": "set from pipeline job_id"
+    },
+    {
+      "column": "app_version",
+      "source_path": "app_version",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "application_id",
+      "source_path": "application_id",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "channel",
+      "source_path": "channel",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "city",
+      "source_path": "city",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "client_lib",
+      "source_path": "client_lib",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "destination",
+      "source_path": "destination",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "device_type",
+      "source_path": "device_type",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "drop_step",
+      "source_path": "drop_step",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "geoip_country_code",
+      "source_path": "geoip_country_code",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "hours_since_drop",
+      "source_path": "hours_since_drop",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "os",
+      "source_path": "os",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "user_id",
+      "source_path": "user_id",
+      "transform": "copy from raw JSON path with nullable cast"
+    },
+    {
+      "column": "raw_json",
+      "source_path": null,
+      "transform": "serialize original event JSON"
+    },
+    {
+      "column": "ingested_at",
+      "source_path": null,
+      "transform": "ClickHouse DEFAULT now()"
+    }
+  ]
+}

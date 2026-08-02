@@ -1,0 +1,13 @@
+{
+  "job_id": "20260802T000455_03_status_sharing",
+  "feature_slug": "status_sharing",
+  "spec_path": "/Users/shivamtaneja/projects/clickhouse/click-a-thon-26-submissions/Query Kings/source_code/specs/03_status_sharing/spec.md",
+  "events_path": "/Users/shivamtaneja/projects/clickhouse/click-a-thon-26-submissions/Query Kings/source_code/specs/03_status_sharing/events.ndjson",
+  "spec_bytes": 1176,
+  "events_bytes": 2375005,
+  "spec_rows_inserted": 1,
+  "event_rows_inserted": 6503,
+  "bronze_spec_table": "bronze.feature_specs",
+  "bronze_event_table": "bronze.feature_events",
+  "ingested_at": "2026-08-02T00:04:58.314Z"
+}

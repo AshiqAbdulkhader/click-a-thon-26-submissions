@@ -13,10 +13,18 @@ export async function startReportServer(input?: {
   port?: number;
 }) {
   const repoRoot = input?.repoRoot ?? path.resolve(process.cwd(), "..");
-  const port = input?.port ?? Number(process.env.REPORT_PORT ?? 8787);
+  // Render (and most hosts) inject PORT; fall back to REPORT_PORT / 8787 locally.
+  const port =
+    input?.port ?? Number(process.env.PORT ?? process.env.REPORT_PORT ?? 8787);
+  const host = process.env.HOST ?? "0.0.0.0";
 
-  // Fresh overview on boot.
-  await generatePipelineReport({ repoRoot });
+  // Fresh overview on boot (ok if artifacts missing — Ask can still run).
+  try {
+    await generatePipelineReport({ repoRoot });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.warn(`[report server] boot report skipped: ${message}`);
+  }
 
   const server = createServer(async (req, res) => {
     try {
@@ -29,12 +37,13 @@ export async function startReportServer(input?: {
   });
 
   await new Promise<void>((resolve) => {
-    server.listen(port, () => resolve());
+    server.listen(port, host, () => resolve());
   });
 
-  const url = `http://127.0.0.1:${port}`;
+  const url = `http://${host === "0.0.0.0" ? "localhost" : host}:${port}`;
   console.log("");
   console.log(`Report UI: ${url}`);
+  console.log(`Listening on ${host}:${port}`);
   console.log("Ask from the page — answer lands in the same HTML.");
   console.log("Ctrl+C to stop.");
   console.log("");
@@ -61,7 +70,20 @@ async function handleRequest(
     (url.pathname === "/" || url.pathname === "/report.html")
   ) {
     const jobId = url.searchParams.get("job") ?? undefined;
-    await generatePipelineReport({ repoRoot, jobId: jobId || undefined });
+    try {
+      await generatePipelineReport({ repoRoot, jobId: jobId || undefined });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      // Still serve a minimal Ask page so the hosted demo boots before artifacts land.
+      const fallback = minimalAskHtml(message);
+      res.writeHead(200, {
+        "content-type": "text/html; charset=utf-8",
+        "cache-control": "no-store",
+        ...corsHeaders(),
+      });
+      res.end(fallback);
+      return;
+    }
     const htmlPath = path.join(repoRoot, "frontend", "dist", "report.html");
     const html = await readFile(htmlPath, "utf8");
     res.writeHead(200, {
@@ -154,4 +176,50 @@ async function readBody(req: IncomingMessage): Promise<string> {
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
   return Buffer.concat(chunks).toString("utf8");
+}
+
+function minimalAskHtml(reason: string): string {
+  const safe = reason.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Schema Kings · Ask</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-950 text-slate-100 min-h-screen">
+  <main class="max-w-2xl mx-auto px-4 py-10 space-y-6">
+    <h1 class="text-2xl font-semibold">Schema Kings</h1>
+    <p class="text-slate-400 text-sm">Overview artifacts not loaded yet. Ask still runs against ClickHouse.</p>
+    <p class="text-amber-200/80 text-xs font-mono break-words">${safe}</p>
+    <form id="ask" class="space-y-3">
+      <textarea name="question" rows="4" required
+        class="w-full rounded-lg bg-slate-900 border border-slate-700 p-3 text-sm"
+        placeholder="Ask a PM question…"></textarea>
+      <button type="submit"
+        class="rounded-lg bg-emerald-600 hover:bg-emerald-500 px-4 py-2 text-sm font-medium">Ask</button>
+    </form>
+    <pre id="out" class="text-xs whitespace-pre-wrap text-slate-300"></pre>
+  </main>
+  <script>
+    document.getElementById("ask").addEventListener("submit", async (e) => {
+      e.preventDefault();
+      const question = new FormData(e.target).get("question");
+      const out = document.getElementById("out");
+      out.textContent = "Running analytics agent…";
+      const res = await fetch("/api/ask", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ question }),
+      });
+      const data = await res.json();
+      if (!res.ok) { out.textContent = data.error || res.statusText; return; }
+      if (data.report_url) { location.href = data.report_url; return; }
+      out.textContent = JSON.stringify(data, null, 2);
+    });
+  </script>
+</body>
+</html>
+`;
 }

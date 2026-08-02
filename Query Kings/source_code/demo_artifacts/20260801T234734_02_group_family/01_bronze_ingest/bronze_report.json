@@ -1,0 +1,13 @@
+{
+  "job_id": "20260801T234734_02_group_family",
+  "feature_slug": "group_family",
+  "spec_path": "/Users/shivamtaneja/projects/clickhouse/click-a-thon-26-submissions/Query Kings/source_code/specs/02_group_family/spec.md",
+  "events_path": "/Users/shivamtaneja/projects/clickhouse/click-a-thon-26-submissions/Query Kings/source_code/specs/02_group_family/events.ndjson",
+  "spec_bytes": 1196,
+  "events_bytes": 2609588,
+  "spec_rows_inserted": 1,
+  "event_rows_inserted": 5453,
+  "bronze_spec_table": "bronze.feature_specs",
+  "bronze_event_table": "bronze.feature_events",
+  "ingested_at": "2026-08-01T23:47:35.460Z"
+}

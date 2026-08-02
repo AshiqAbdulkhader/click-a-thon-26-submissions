@@ -30,7 +30,7 @@ All dataset content is **synthetic**. No real customer data or PII.
 
 ## Hosted Demo
 
-<!-- TODO: replace with your live URL -->
+<!-- TODO: replace with your live URL after Render deploy -->
 
 **[Live demo](YOUR_HOSTED_DEMO_URL)** — report UI with Ask box, instrumented features, context changelog, and Langfuse deep-links.
 

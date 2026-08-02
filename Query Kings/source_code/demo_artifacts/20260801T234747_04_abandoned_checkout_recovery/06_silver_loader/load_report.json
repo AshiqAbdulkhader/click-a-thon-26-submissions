@@ -1,0 +1,29 @@
+{
+  "job_id": "20260801T234747_04_abandoned_checkout_recovery",
+  "table": "silver.abandoned_checkout_recovery_events",
+  "inserted_rows": 5919,
+  "validation": {
+    "passed": true,
+    "failures": [],
+    "expected_rows": 5919,
+    "actual_rows": 5919,
+    "expected_events": [
+      "abandonment_detected",
+      "reconverted",
+      "reminder_cta_clicked",
+      "reminder_opened",
+      "reminder_sent",
+      "resumed_at_step"
+    ],
+    "actual_events": [
+      "abandonment_detected",
+      "reconverted",
+      "reminder_cta_clicked",
+      "reminder_opened",
+      "reminder_sent",
+      "resumed_at_step"
+    ],
+    "timestamp_min_max": "2026-06-08 06:01:00.000\t2026-07-01 00:00:00.000"
+  },
+  "loaded_at": "2026-08-01T23:47:52.909Z"
+}

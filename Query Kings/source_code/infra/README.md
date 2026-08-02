@@ -70,5 +70,4 @@ ops.pipeline_stages
 The provided Atlys base tables are loaded separately by `data/load.sh` into the
 `schema_kings` database.
 
-See `LOCAL_TO_PROD_RUNBOOK.md` for the exact reset, load, bootstrap, and demo
-commands.
+See [`../RUN.md`](../RUN.md) for reset, load, bootstrap, and demo commands.

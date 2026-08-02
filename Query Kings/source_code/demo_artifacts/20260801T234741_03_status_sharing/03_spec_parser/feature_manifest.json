@@ -1,0 +1,30 @@
+{
+  "feature_slug": "status_sharing",
+  "feature_name": "Visa Status Sharing",
+  "primary_entity": "share_id",
+  "workflow_type": "referral_loop",
+  "event_order": [
+    "share_clicked",
+    "channel_selected",
+    "link_generated",
+    "link_opened",
+    "recipient_cta_clicked"
+  ],
+  "success_event": "recipient_cta_clicked",
+  "metric_hints": [
+    "Share rate by status_shared",
+    "Channel mix for new-user opens",
+    "Recipient conversion rate (opens to CTA) for new users",
+    "Destination spread of shares"
+  ],
+  "context_notes": [
+    "Recipient events keyed by share_id; join on share_id",
+    "link_opened may include non-new users; filter by recipient_is_new_user",
+    "status_shared only present in sharer events"
+  ],
+  "_meta": {
+    "llm_used": true,
+    "llm_error": null,
+    "model": "openai/gpt-oss-20b"
+  }
+}

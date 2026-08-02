@@ -1,0 +1,21 @@
+{
+  "job_id": "20260801T234741_03_status_sharing",
+  "feature_slug": "status_sharing",
+  "table_name": "silver.status_sharing_events",
+  "row_count": 6503,
+  "event_names": [
+    "share_clicked",
+    "channel_selected",
+    "link_generated",
+    "link_opened",
+    "recipient_cta_clicked"
+  ],
+  "primary_entity": "share_id",
+  "success_event": "recipient_cta_clicked",
+  "silver_loaded": true,
+  "silver_inserted_rows": 6503,
+  "artifacts": "/Users/shivamtaneja/projects/clickhouse/click-a-thon-26-submissions/Query Kings/source_code/backend/artifacts/20260801T234741_03_status_sharing",
+  "model": "openai/gpt-oss-20b",
+  "groq_used": true,
+  "langfuse_trace_id": "f65a220d2a1ed443c7eb0837a2954e9e"
+}

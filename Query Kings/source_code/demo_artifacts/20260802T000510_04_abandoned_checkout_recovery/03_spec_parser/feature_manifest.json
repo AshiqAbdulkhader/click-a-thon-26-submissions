@@ -1,0 +1,34 @@
+{
+  "feature_slug": "abandoned_checkout_recovery",
+  "feature_name": "Abandoned Checkout Recovery",
+  "primary_entity": "application_id",
+  "workflow_type": "recovery",
+  "event_order": [
+    "abandonment_detected",
+    "reminder_sent",
+    "reminder_opened",
+    "reminder_cta_clicked",
+    "resumed_at_step",
+    "reconverted"
+  ],
+  "success_event": "reconverted",
+  "metric_hints": [
+    "reconversion_rate_by_drop_step",
+    "channel_effectiveness",
+    "timing_effectiveness",
+    "device_geo_segment_recovery_rate",
+    "overall_recovery_rate"
+  ],
+  "context_notes": [
+    "Assumes application_id uniquely identifies a checkout attempt",
+    "reminder_sent may occur multiple times per abandonment",
+    "resumed_at_step does not guarantee reconversion",
+    "reconverted event only counts final payment",
+    "events may be missing due to SDK failures"
+  ],
+  "_meta": {
+    "llm_used": true,
+    "llm_error": null,
+    "model": "openai/gpt-oss-20b"
+  }
+}

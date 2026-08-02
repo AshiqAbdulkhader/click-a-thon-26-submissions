@@ -1,0 +1,21 @@
+{
+  "job_id": "20260802T000423_01_express_checkout",
+  "feature_slug": "express_checkout",
+  "table_name": "silver.express_checkout_events",
+  "row_count": 5507,
+  "event_names": [
+    "express_checkout_shown",
+    "express_checkout_selected",
+    "saved_method_used",
+    "otp_entered",
+    "express_payment_confirmed"
+  ],
+  "primary_entity": "application_id",
+  "success_event": "express_payment_confirmed",
+  "silver_loaded": true,
+  "silver_inserted_rows": 5507,
+  "artifacts": "/Users/shivamtaneja/projects/clickhouse/click-a-thon-26-submissions/Query Kings/source_code/backend/artifacts/20260802T000423_01_express_checkout",
+  "model": "openai/gpt-oss-20b",
+  "groq_used": true,
+  "langfuse_trace_id": "2992c7809b6004ee209a812429998d24"
+}

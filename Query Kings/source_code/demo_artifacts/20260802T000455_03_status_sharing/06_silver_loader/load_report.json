@@ -1,0 +1,27 @@
+{
+  "job_id": "20260802T000455_03_status_sharing",
+  "table": "silver.status_sharing_events",
+  "inserted_rows": 6503,
+  "validation": {
+    "passed": true,
+    "failures": [],
+    "expected_rows": 6503,
+    "actual_rows": 6503,
+    "expected_events": [
+      "channel_selected",
+      "link_generated",
+      "link_opened",
+      "recipient_cta_clicked",
+      "share_clicked"
+    ],
+    "actual_events": [
+      "channel_selected",
+      "link_generated",
+      "link_opened",
+      "recipient_cta_clicked",
+      "share_clicked"
+    ],
+    "timestamp_min_max": "2026-06-08 06:00:00.000\t2026-07-01 09:21:00.000"
+  },
+  "loaded_at": "2026-08-02T00:05:06.564Z"
+}

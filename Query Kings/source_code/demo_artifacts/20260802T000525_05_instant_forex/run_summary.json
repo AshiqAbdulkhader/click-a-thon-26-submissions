@@ -1,0 +1,21 @@
+{
+  "job_id": "20260802T000525_05_instant_forex",
+  "feature_slug": "instant_forex",
+  "table_name": "silver.instant_forex_events",
+  "row_count": 6237,
+  "event_names": [
+    "forex_offer_shown",
+    "currency_selected",
+    "amount_entered",
+    "forex_added_to_cart",
+    "forex_purchased"
+  ],
+  "primary_entity": "application_id",
+  "success_event": "forex_purchased",
+  "silver_loaded": true,
+  "silver_inserted_rows": 6237,
+  "artifacts": "/Users/shivamtaneja/projects/clickhouse/click-a-thon-26-submissions/Query Kings/source_code/backend/artifacts/20260802T000525_05_instant_forex",
+  "model": "openai/gpt-oss-20b",
+  "groq_used": true,
+  "langfuse_trace_id": "304dcd48aae1e183226cd57154f619b8"
+}

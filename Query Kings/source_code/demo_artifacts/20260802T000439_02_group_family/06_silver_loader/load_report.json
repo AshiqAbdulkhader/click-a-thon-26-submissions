@@ -1,0 +1,25 @@
+{
+  "job_id": "20260802T000439_02_group_family",
+  "table": "silver.group_family_events",
+  "inserted_rows": 5453,
+  "validation": {
+    "passed": true,
+    "failures": [],
+    "expected_rows": 5453,
+    "actual_rows": 5453,
+    "expected_events": [
+      "group_started",
+      "group_submitted",
+      "traveller_added",
+      "traveller_removed"
+    ],
+    "actual_events": [
+      "group_started",
+      "group_submitted",
+      "traveller_added",
+      "traveller_removed"
+    ],
+    "timestamp_min_max": "2026-06-08 06:01:00.000\t2026-06-28 23:10:00.000"
+  },
+  "loaded_at": "2026-08-02T00:04:51.259Z"
+}

@@ -1,0 +1,29 @@
+{
+  "feature_slug": "group_family",
+  "feature_name": "Group / Family Applications",
+  "primary_entity": "group_id",
+  "workflow_type": "funnel",
+  "event_order": [
+    "group_started",
+    "traveller_added",
+    "traveller_removed",
+    "group_submitted"
+  ],
+  "success_event": "group_submitted",
+  "metric_hints": [
+    "Completion rate (group_started → group_submitted) by group size",
+    "Add vs remove churn per group (traveller_added vs traveller_removed)",
+    "Per‑traveller docs_complete bottleneck for large groups",
+    "Destination or segment distribution of group applications"
+  ],
+  "context_notes": [
+    "traveller_removed events are rare and may skew churn metrics",
+    "docs_complete flag only present on traveller_added events",
+    "group_size field is static per group, but travellers_submitted may differ if removals occur"
+  ],
+  "_meta": {
+    "llm_used": true,
+    "llm_error": null,
+    "model": "openai/gpt-oss-20b"
+  }
+}

@@ -1,0 +1,265 @@
+{
+  "feature_slug": "instant_forex",
+  "row_count": 6237,
+  "event_counts": {
+    "forex_offer_shown": 2900,
+    "currency_selected": 1033,
+    "amount_entered": 1033,
+    "forex_added_to_cart": 725,
+    "forex_purchased": 546
+  },
+  "event_order": [
+    "forex_offer_shown",
+    "currency_selected",
+    "amount_entered",
+    "forex_added_to_cart",
+    "forex_purchased"
+  ],
+  "fields": [
+    {
+      "path": "addon_value_inr",
+      "count": 1271,
+      "null_count": 0,
+      "types": [
+        "number"
+      ],
+      "sample_values": [
+        81691,
+        63946,
+        30708,
+        94503,
+        25960
+      ]
+    },
+    {
+      "path": "amount",
+      "count": 2304,
+      "null_count": 0,
+      "types": [
+        "number"
+      ],
+      "sample_values": [
+        1000,
+        800,
+        500,
+        1500,
+        300
+      ]
+    },
+    {
+      "path": "app_version",
+      "count": 6237,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "7.44.0",
+        "7.46.0",
+        "7.45.2"
+      ]
+    },
+    {
+      "path": "application_id",
+      "count": 6237,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "0405310ccb5d0935ce7c6df4418b8189",
+        "aea8cc14a2610019935c6f584e0c4689",
+        "3c580c9096dbce9eaf8c01c423752b5c",
+        "b9de48a3f6701001226aa448c98e1a6c",
+        "a98c047d719e74fed30f9b105c9ed71b"
+      ]
+    },
+    {
+      "path": "city",
+      "count": 6237,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "Mumbai",
+        "Singapore",
+        "Dubai",
+        "Riyadh",
+        "New York"
+      ]
+    },
+    {
+      "path": "client_lib",
+      "count": 6237,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "mobile-rn",
+        "web-js"
+      ]
+    },
+    {
+      "path": "destination",
+      "count": 6237,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "GR",
+        "TH",
+        "ID",
+        "FR",
+        "US"
+      ]
+    },
+    {
+      "path": "device_type",
+      "count": 6237,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "android",
+        "ios",
+        "web-user-b2c",
+        "Desktop"
+      ]
+    },
+    {
+      "path": "event",
+      "count": 6237,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "forex_offer_shown",
+        "currency_selected",
+        "amount_entered",
+        "forex_added_to_cart",
+        "forex_purchased"
+      ]
+    },
+    {
+      "path": "from_currency",
+      "count": 6237,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "INR"
+      ]
+    },
+    {
+      "path": "fx_rate",
+      "count": 2900,
+      "null_count": 0,
+      "types": [
+        "number"
+      ],
+      "sample_values": [
+        70.1221,
+        1.3203,
+        58.5386,
+        81.7266,
+        67.9242
+      ]
+    },
+    {
+      "path": "geoip_country_code",
+      "count": 6237,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "IN",
+        "SG",
+        "AE",
+        "SA",
+        "US"
+      ]
+    },
+    {
+      "path": "id",
+      "count": 6237,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "ee2d839ea73c3d5a9735e59de6800588",
+        "bd0100ed35aae363052735b35783024a",
+        "bfeddbb2a5fad095961eb327a2bdc6d7",
+        "4266561b124d59d06f8eeab3009983ae",
+        "696eb8e72adc34ee4034b4108b720166"
+      ]
+    },
+    {
+      "path": "os",
+      "count": 6237,
+      "null_count": 381,
+      "types": [
+        "null",
+        "string"
+      ],
+      "sample_values": [
+        "Android",
+        "iOS",
+        "Mac OS X",
+        "Windows"
+      ]
+    },
+    {
+      "path": "timestamp",
+      "count": 6237,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "2026-06-08T06:00:00.000",
+        "2026-06-08T06:02:00.000",
+        "2026-06-08T06:04:00.000",
+        "2026-06-08T06:05:00.000",
+        "2026-06-08T06:09:00.000"
+      ]
+    },
+    {
+      "path": "to_currency",
+      "count": 6237,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "EUR",
+        "THB",
+        "IDR",
+        "USD",
+        "SGD"
+      ]
+    },
+    {
+      "path": "user_id",
+      "count": 6237,
+      "null_count": 0,
+      "types": [
+        "string"
+      ],
+      "sample_values": [
+        "YofU8uKBNRL05tEkkwW0m3czRXMc",
+        "DiYRLRJjM3LMOYyeo9CpQnWRdjVg",
+        "9pQBaFmHXTPGwlxJj8s0raJPzeHs",
+        "FrrMD8Jjs2VQNZOIonuq7XRIxI9H",
+        "Eouy0VX0bPVbkvyGp5Xea5tzfNtd"
+      ]
+    }
+  ]
+}
