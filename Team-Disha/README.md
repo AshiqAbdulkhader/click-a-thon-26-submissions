@@ -46,9 +46,7 @@ Local fallback after `docker compose` + seed: `http://localhost:3080` (same cred
 
 ## Demo Video
 
-<!-- Paste your 2–3 min recording URL when ready -->
-
-**[Demo video (2–3 min)](YOUR_DEMO_VIDEO_URL)** — record LibreChat Day-2 chat + open a public Langfuse trace + HyperDX data sources (`otel.otel_logs` / `otel.otel_traces`).
+**[Demo video (2–3 min)](https://drive.google.com/file/d/18foP3ku3cDEzAKG5TdvZaDZ-kytKUTIH/view?usp=drive_link)** — LibreChat Day-2 RCA + Langfuse trace + ClickStack / HyperDX.
 
 ## OSS stack evidence
 

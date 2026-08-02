@@ -9,7 +9,7 @@ Use before opening PR `[Submission] Team-Disha`.
 - [x] `README.md` with sections from template
 - [x] Hosted demo link + judge login in README (`https://metric-mind.ashiqabdulkhader.dev/login`)
 - [x] Architecture (`Architecture.md` — expanded from development: data model, `rca_*`, Compose, tools, research) + `design-notes/RESEARCH.md`
-- [ ] **Demo video** 2–3 min link in README (you upload; leave `YOUR_DEMO_VIDEO_URL` until then)
+- [x] **Demo video** 2–3 min link in README (Google Drive)
 - [ ] **`pitch-deck.pdf`** in this folder
 - [ ] PR against submissions repo titled `[Submission] Team-Disha`
 
