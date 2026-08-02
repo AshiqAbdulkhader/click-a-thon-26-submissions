@@ -143,15 +143,15 @@ Or reuse local Docker only for Langfuse and run the CLI against Cloud CH via `.e
 
 ## CLI cheat sheet
 
-| Command | Purpose |
-| --- | --- |
-| `./run-local.sh` | **One command** local e2e |
-| `./clean-local.sh` | Reset local Docker volumes |
-| `pnpm cli setup` | Load/validate base tables + bootstrap context |
-| `pnpm cli run <spec-folder>` | Instrumentation → `ops.job_artifacts` in CH |
-| `pnpm cli ask "…"` | Analytics → same |
-| `pnpm cli report [job_id]` | HTML report **from ClickHouse** |
-| `pnpm cli serve` | UI + Ask (CH-backed) |
+| Command                      | Purpose                                       |
+| ---------------------------- | --------------------------------------------- |
+| `./run-local.sh`             | **One command** local e2e                     |
+| `./clean-local.sh`           | Reset local Docker volumes                    |
+| `pnpm cli setup`             | Load/validate base tables + bootstrap context |
+| `pnpm cli run <spec-folder>` | Instrumentation → `ops.job_artifacts` in CH   |
+| `pnpm cli ask "…"`           | Analytics → same                              |
+| `pnpm cli report [job_id]`   | HTML report **from ClickHouse**               |
+| `pnpm cli serve`             | UI + Ask (CH-backed)                          |
 
 Artifacts live only in **ClickHouse** `ops.job_artifacts` (local Docker or Cloud via `CLICKHOUSE_*`). No local `demo_artifacts` / disk job folders.
 
