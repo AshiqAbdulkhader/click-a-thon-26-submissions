@@ -21,7 +21,10 @@ the pipeline end to end.
 - The three agents and how they hand off
 - **Where your context layer is stored** (file / ClickHouse table / vector store) and why
 - How Langfuse tracing is wired; additionally if you integrated ClickStack / LibreChat - tell us how
+(see [what evidence to include](README.md#using-clickstack-langfuse-or-librechat) for each tool)
 - LLM provider(s) used and why
+
+
 
 ## 3. Unseen Data/Surprise Round folder (the graded outputs)
 
@@ -32,12 +35,15 @@ table was added (the context-freshness proof)
 - The **6th-spec bundle**: generated schema + insight summary (written by the agent for the product  
 audience) + the trace
 
+
+
 ## 4. Langfuse trace links
 
 Shared or exported traces for each agent run. **The 6th-spec run's trace is**  
 **mandatory** for that output.
 
 ---
+
 
 
 ## Standard probe set (run these and include the outputs)
@@ -51,12 +57,4 @@ system's job.
 2. "Where are we losing conversions, and for which segments (device / geo / destination)?"
 3. "Are there any regressions or trends over the last quarter?"
 4. "Is anything in the base context wrong, stale, or self-contradictory?"
-
-
-## Notes
-
-- Insights are graded on whether a PM would act on them: name the pattern **and the
-why**, not just a chart.
-- You have creative liberty with the technical architecture, UI/UX of the product
-(can be lean also), final product use case and extra feature built.
 

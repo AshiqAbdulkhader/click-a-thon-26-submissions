@@ -18,7 +18,7 @@ Welcome! This repository collects all project submissions for **Click-a-thon 202
 4. Inside your folder, the following are **mandatory for all submissions**, regardless
   of track:
   - **Project source code** (**mandatory**)
-  - **`README.md`** (**mandatory**) — must include a **hosted demo link**, and this demo link itself must cover the details required by your track's submission guidelines ([Atlys](ATLYS_SUBMISSION_GUIDELINES.md) ·
+  - `README.md` (**mandatory**) — must include a **hosted demo link**, and this demo link itself must cover the details required by your track's submission guidelines ([Atlys](ATLYS_SUBMISSION_GUIDELINES.md) ·
   [SonyLIV](SONYLIV_SUBMISSION_GUIDELINES.md) ·
   [InMobi](INMOBI_SUBMISSION_GUIDELINES.md)) — see the
   [template below](#submission-readme-template)
@@ -74,6 +74,36 @@ Step-by-step instructions to run the project locally.
 ```
 
 
+
+## Using ClickStack, Langfuse, or LibreChat?
+
+These tools run as services outside your repo, so judges only see what you capture. If your solution uses any of them, include the following in your team's folder - "we had it running" is not evidence.
+
+**For every tool you use:**
+
+- **Commit the wiring** — deployment config (e.g. `docker-compose.yml` / Helm),
+an `.env.example` with **secrets redacted**, and the integration code itself
+(SDK setup, OTel collector config, custom endpoints). Judges must be able to see
+*how* it's connected, even if they don't redeploy it.
+- **Show it live** in your hosted demo and demo video - a screenshot alone is not proof of integration.
+- **Explain its role** in your README's architecture section: what part of the
+pipeline runs through the tool. Superficial inclusion (installed but not part of
+the actual workflow) scores nothing on the ClickHouse & OSS Stack criterion.
+
+**Tool-specific evidence:**
+
+- **Langfuse** — share traces as **public share links**, or export them as JSON
+into your submission folder. Do not rely on judges logging into your Langfuse
+project. Traces must correspond to the actual graded runs (see your track's
+guidelines for which runs require traces).
+- **ClickStack** — include your OTel collector / ingestion config, state which
+ClickHouse service and tables it writes to, and capture the dashboards or
+searches you actually used (screenshots in the README plus a live walkthrough
+in the video).
+- **LibreChat** — commit your `librechat.yaml` and any custom endpoint, agent, or  
+tool definitions (keys redacted). If LibreChat is your product UI, the hosted  
+demo link should point to it — provide test credentials for judges in your  
+README, or demonstrate the full chat flow in the video.
 
 ## Rules
 

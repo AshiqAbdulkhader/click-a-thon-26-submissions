@@ -29,7 +29,9 @@ actually runs** — the drill-down must live in ClickHouse queries, not in the L
 - Your anomaly-detection and attribution approach (baselines, contribution analysis,
 ML — anything goes; explainability and trustworthiness matter more than sophistication)
 - Which of ClickStack / Langfuse / LibreChat you meaningfully integrated and how
-(at least one is required; superficial inclusion won't count)
+(at least one is required; superficial inclusion won't count) — see
+[what evidence to include](README.md#using-clickstack-langfuse-or-librechat)
+for each tool
 - LLM provider(s) used and why
 
 
