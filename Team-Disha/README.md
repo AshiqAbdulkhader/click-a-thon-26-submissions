@@ -46,7 +46,9 @@ Local fallback after `docker compose` + seed: `http://localhost:3080` (same cred
 
 ## Demo Video
 
-**[Demo video (2–3 min)](https://drive.google.com/file/d/18foP3ku3cDEzAKG5TdvZaDZ-kytKUTIH/view?usp=drive_link)** — LibreChat Day-2 RCA + Langfuse trace + ClickStack / HyperDX.
+[`demo-video.mov`](./demo-video.mov) — LibreChat Day-2 RCA + Langfuse trace + ClickStack / HyperDX (~2–3 min).
+
+Mirror: [Google Drive](https://drive.google.com/file/d/18foP3ku3cDEzAKG5TdvZaDZ-kytKUTIH/view?usp=drive_link)
 
 ## OSS stack evidence
 
