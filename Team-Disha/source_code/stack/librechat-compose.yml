@@ -1,6 +1,7 @@
 # LibreChat + Mongo — adapted from agentic-data-stack
 # No RAG / pgvector / Meilisearch. Admin panel is a separate compose file.
 # Langfuse env vars point at Langfuse Cloud (see root .env)
+# LibreChat file logs → librechat-log-shipper → ClickStack OTLP → HyperDX
 
 services:
   librechat:
@@ -39,12 +40,39 @@ services:
       - LANGFUSE_SECRET_KEY=${LANGFUSE_SECRET_KEY}
       - LANGFUSE_BASE_URL=${LANGFUSE_BASE_URL}
       - CLICKHOUSE_MCP_AUTH_TOKEN=${CLICKHOUSE_MCP_AUTH_TOKEN}
+      # Structured file + JSON console logs for ClickStack / HyperDX
+      - DEBUG_LOGGING=true
+      - CONSOLE_JSON=true
+      - LOG_TO_FILE=true
+      - LIBRECHAT_LOG_DIR=/app/logs
     volumes:
       - type: bind
         source: ./librechat.yaml
         target: /app/librechat.yaml
       - librechat_images:/app/client/public/images
       - librechat_uploads:/app/uploads
+      - librechat_logs:/app/logs
+    networks:
+      - clickathon
+
+  # Tails LibreChat Winston files and ships OTLP logs → ClickStack collector
+  librechat-log-shipper:
+    image: otel/opentelemetry-collector-contrib:0.128.0
+    restart: always
+    command: ["--config=/etc/otelcol/config.yaml"]
+    environment:
+      HYPERDX_API_KEY: ${HYPERDX_API_KEY}
+    volumes:
+      - type: bind
+        source: ./otel/librechat-logs-collector.yml
+        target: /etc/otelcol/config.yaml
+        read_only: true
+      - librechat_logs:/var/log/librechat:ro
+    depends_on:
+      librechat:
+        condition: service_healthy
+      otel-collector:
+        condition: service_started
     networks:
       - clickathon
 
@@ -63,3 +91,4 @@ volumes:
   librechat_mongodb_data:
   librechat_images:
   librechat_uploads:
+  librechat_logs:

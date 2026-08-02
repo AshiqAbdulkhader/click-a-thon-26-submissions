@@ -36,6 +36,7 @@ HyperDX login: `admin@clickathon.local` / same password as `LIBRECHAT_USER_PASSW
 - Logs source must use `Timestamp` (Cloud `otel.otel_logs` has no `TimestampTime`).
 - OTLP ingest requires `authorization: <HYPERDX_API_KEY>` (team API key). Without it the collector returns **401**.
 - HyperDX API listens on **8002** (not 8000 — that port is ClickHouse MCP).
+- **LibreChat → HyperDX:** `librechat-log-shipper` tails `/app/logs` (`error-*.log`, `debug-*.log`) and exports OTLP to the ClickStack collector. Filter HyperDX Logs by `ServiceName:librechat`.
 
 ## LibreChat RCA (important)
 
