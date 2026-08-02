@@ -73,7 +73,7 @@ async function handleRequest(
       await generatePipelineReport({ repoRoot, jobId: jobId || undefined });
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      // Still serve a minimal Ask page so the hosted demo boots before artifacts land.
+      // Still serve a minimal Ask page if no artifacts are in ClickHouse yet.
       const fallback = minimalAskHtml(message);
       res.writeHead(200, {
         "content-type": "text/html; charset=utf-8",

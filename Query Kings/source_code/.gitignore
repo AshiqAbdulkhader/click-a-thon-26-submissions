@@ -137,9 +137,8 @@ opencode.json
 .gemini/settings.json
 .grok/config.toml
 
-# Legacy local artifact dirs (unused — artifacts are in ClickHouse ops.job_artifacts)
+# Unused on-disk job dirs (artifacts live in ClickHouse ops.job_artifacts)
 backend/artifacts/
-demo_artifacts/
 
 # ClickHouse-backed context replaces local context registry files
 backend/context/

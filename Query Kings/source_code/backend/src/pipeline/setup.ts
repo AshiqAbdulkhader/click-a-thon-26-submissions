@@ -103,7 +103,7 @@ export async function runSetup(input: { repoRoot: string }) {
                 throw new Error(
                   `Base table ${table.table} is missing or empty (${actualRows} rows). ` +
                     (skipBaseLoad
-                      ? "Run data/load.sh against Cloud first, then retry setup."
+                      ? "Base tables missing/empty while SETUP_SKIP_BASE_LOAD=1. Load data first, then retry setup."
                       : "data/load.sh did not leave a usable table."),
                 );
               }

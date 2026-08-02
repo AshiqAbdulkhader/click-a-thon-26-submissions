@@ -3,8 +3,8 @@ import path from "node:path";
 import { executeClickHouse } from "./clickhouse.js";
 
 /**
- * Local Docker mounts infra/clickhouse/init/*.sql on first boot.
- * ClickHouse Cloud does not — so cloud setup/runs must create layers explicitly.
+ * Ensures bronze/silver/gold (and related) DDL exist.
+ * Docker init may already have created them; this is safe to re-run (IF NOT EXISTS).
  */
 export async function ensurePipelineLayers(repoRoot: string) {
   const sqlPath = path.join(

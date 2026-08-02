@@ -30,7 +30,7 @@ export async function assemblePipelineReport(input: {
   repoRoot: string;
   jobId?: string;
 }): Promise<PipelineReport> {
-  // Reports read from ClickHouse only (ops.job_artifacts) — same for local Docker + Cloud.
+  // Reports read from ClickHouse only (ops.job_artifacts).
   const jobs = await listJobsFromClickHouseMapped();
 
   if (jobs.length === 0) {
@@ -180,7 +180,8 @@ async function assembleRunFocus(input: {
 }): Promise<PipelineReport> {
   const focus = await loadFeatureCard(input.job);
   const contextChangelog =
-    (await readJobText(input.job, "07_context_agent/context_diff.md")) ?? `Instrumented \`${focus.feature_slug}\` → \`${focus.table_name}\``;
+    (await readJobText(input.job, "07_context_agent/context_diff.md")) ??
+    `Instrumented \`${focus.feature_slug}\` → \`${focus.table_name}\``;
 
   const updated =
     (await readJobJson<{
@@ -241,9 +242,7 @@ async function loadFeatureCard(job: JobMeta): Promise<FeatureCard> {
       partition_by?: string;
       table_name?: string;
     }>(job, "04_schema_generator/schema_plan.json")) ?? {};
-  const sql =
-    (await readJobText(job, "04_schema_generator/schema.sql")) ??
-    "";
+  const sql = (await readJobText(job, "04_schema_generator/schema.sql")) ?? "";
   const contextDiff =
     (await readJobText(job, "07_context_agent/context_diff.md")) ?? "";
   const traceId = str(summary.langfuse_trace_id) ?? "";
@@ -294,7 +293,10 @@ async function loadAskCard(
     )) ??
     {};
   const intent =
-    (await readJobJson<{ feature_hints?: string[] }>(job, "08a_query_understanding/intent.json")) ?? {};
+    (await readJobJson<{ feature_hints?: string[] }>(
+      job,
+      "08a_query_understanding/intent.json",
+    )) ?? {};
 
   const traceId =
     str(summary.langfuse_trace_id) ?? str(finalAnswer.trace_id) ?? "";
@@ -418,7 +420,10 @@ function byTimeDesc(a: JobMeta, b: JobMeta) {
   return b.mtimeMs - a.mtimeMs;
 }
 
-async function readJobJson<T>(job: JobMeta, relativePath: string): Promise<T | null> {
+async function readJobJson<T>(
+  job: JobMeta,
+  relativePath: string,
+): Promise<T | null> {
   const text = await readJobText(job, relativePath);
   if (text == null) return null;
   try {

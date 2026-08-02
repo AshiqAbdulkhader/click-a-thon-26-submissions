@@ -83,19 +83,15 @@ cd source_code
 ./run-local.sh
 ```
 
-### Prerequisites (local)
+### Prerequisites
 
-No host ClickHouse client / `brew install clickhouse` for local — Docker provides ClickHouse.
-
-| Tool                                           | Why                                              | Install                                                                                                                     |
-| ---------------------------------------------- | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------- |
-| **Docker Desktop** (or Docker Engine on Linux) | Local ClickHouse + Langfuse via `docker compose` | [Docker Desktop](https://www.docker.com/products/docker-desktop/) (macOS / Windows) — open the app so the daemon is running |
-| **Node.js 22+**                                | Backend CLI / report server                      | [nodejs.org](https://nodejs.org/) · macOS also: `brew install node`                                                         |
-| **pnpm**                                       | Package manager for `source_code/backend`        | `npm install -g pnpm` · macOS also: `brew install pnpm`                                                                     |
-| **Groq API key**                               | LLM stages in all three agents                   | [console.groq.com](https://console.groq.com/)                                                                               |
-| **Bash / WSL** (Windows)                       | `run-local.sh` is bash                           | [WSL](https://learn.microsoft.com/en-us/windows/wsl/install)                                                                |
-
-Cloud Parquet load is separate — see [`RUN.md`](./RUN.md) (host `clickhouse` client only then).
+| Tool                                           | Why                                        | Install                                                                                                   |
+| ---------------------------------------------- | ------------------------------------------ | --------------------------------------------------------------------------------------------------------- |
+| **Docker Desktop** (or Docker Engine on Linux) | ClickHouse + Langfuse via `docker compose` | [Docker Desktop](https://www.docker.com/products/docker-desktop/) — open the app so the daemon is running |
+| **Node.js 22+**                                | Backend CLI / report server                | [nodejs.org](https://nodejs.org/) · macOS also: `brew install node`                                       |
+| **pnpm**                                       | Package manager for `source_code/backend`  | `npm install -g pnpm` · macOS also: `brew install pnpm`                                                   |
+| **Groq API key**                               | LLM stages in all three agents             | [console.groq.com](https://console.groq.com/)                                                             |
+| **Bash / WSL** (Windows)                       | `run-local.sh` is bash                     | [WSL](https://learn.microsoft.com/en-us/windows/wsl/install)                                              |
 
 Verify:
 
@@ -106,4 +102,4 @@ node --version   # v22+ recommended
 pnpm --version
 ```
 
-Then open [`RUN.md`](./RUN.md) and follow local (or Cloud) setup from `source_code/`.
+Then open [`RUN.md`](./RUN.md).
