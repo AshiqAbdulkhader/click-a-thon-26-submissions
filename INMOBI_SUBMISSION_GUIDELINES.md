@@ -14,12 +14,12 @@ All common requirements from the [root README](README.md#how-to-submit) also app
 source code, README with hosted demo link, architecture, recorded demo video
 (2–3 min), and pitch deck PDF.
 
-## 1. Code + how to run it
+## 1. Code
 
 Your full investigation pipeline — **detect** the metric deviation, **drill down**
-to the responsible segment(s), and **produce the plain-language diagnosis** — with a
-`RUN.md`: env vars, your ClickHouse Cloud connection, and one command to run the
-pipeline end to end against a loaded dataset.
+to the responsible segment(s), and **produce the plain-language diagnosis**.
+Instructions to run it live in your submission `README.md` (the step-by-step
+"How to run it" section from the common requirements).
 
 ## 2. Architecture (1–2 pager explanation and/or a diagram)
 
@@ -34,19 +34,7 @@ ML — anything goes; explainability and trustworthiness matter more than sophis
 
 
 
-## 3. Artifacts folder (the graded outputs)
-
-- **Diagnoses for the anomalies your system found in the main dataset**: the
-plain-language explanation, the specific segments named, and every cited number
-reproducible from ClickHouse queries (include the queries)
-- **What was checked and ruled out** for each investigation (e.g. seasonality,
-request volume, CTR) — the bonus criterion from the problem statement
-- Detection and localization are judged against the judges' private answer key:
-found, missed, or hallucinated — avoid crying wolf on noise
-
-
-
-## 4. The unseen incident bundle (mandatory — no trace, no credit)
+## 3. The unseen incident bundle (mandatory — no trace, no credit)
 
 As described in the problem statement, a fresh slice of the same universe with new
 planted anomalies will be released to all teams simultaneously in the final hours
@@ -62,14 +50,6 @@ without a matching trace scores nothing on this criterion
 
 Point your system at the release and let it run. **Build for the unseen incident,
 not the anomalies you found during the build.**
-
-
-
-## 5. Trace links
-
-Shared or exported traces for each investigation run, so a judge can follow what
-was checked, in what order, and why. **The unseen incident's trace is mandatory**
-for that output.
 
 ## Suggested demo
 
@@ -89,6 +69,7 @@ your event credits); ClickHouse must be the primary datastore and analytical eng
 - **Out of scope:** authentication, production deployment, alerting integrations
 (PagerDuty and friends), and polished frontends. Judges reward the investigation
 loop, not the scaffolding.
-- You have creative liberty with the technical architecture, UI/UX of the product
-(can be lean also), final product use case and extra features built.
+- **Your approach is yours to choose.** Any anomaly-detection and attribution
+approach is allowed — from simple baselines and contribution analysis to ML/AI —
+and any LLM provider, with your own keys. A lean UI is fine.
 
