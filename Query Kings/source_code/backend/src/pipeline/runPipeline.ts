@@ -1,4 +1,3 @@
-import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { startActiveObservation } from "@langfuse/tracing";
 import { loadContextBundle } from "./context.js";
@@ -23,13 +22,13 @@ export async function runPipeline(input: RunPipelineInput) {
   const featureSlug = normalizeFeatureSlug(path.basename(specFolder));
   const startedAt = new Date().toISOString();
   let traceId = "";
+  // Path-shaped id only — content is stored in ClickHouse ops.job_artifacts.
   const artifactRoot = path.join(repoRoot, "backend", "artifacts", jobId);
-  await mkdir(artifactRoot, { recursive: true });
 
   console.log(`Starting pipeline`);
   console.log(`Job ID: ${jobId}`);
   console.log(`Spec folder: ${specFolder}`);
-  console.log(`Artifacts: ${artifactRoot}`);
+  console.log(`Artifacts: ops.job_artifacts (job_id=${jobId})`);
   console.log("");
 
   try {
@@ -192,7 +191,7 @@ export async function runPipeline(input: RunPipelineInput) {
       console.log(`Instrumentation agent finished for ${result.featureSlug}.`);
       console.log(`Generated table: silver.${result.schemaPlan.table_name}`);
       console.log(
-        `Generated schema: ${path.join(artifactRoot, "04_schema_generator", "schema.sql")}`,
+        `Schema artifact: ops.job_artifacts / ${jobId} / 04_schema_generator/schema.sql`,
       );
       console.log(`Langfuse trace ID: ${rootSpan.traceId}`);
     });

@@ -1,4 +1,3 @@
-import { mkdir } from "node:fs/promises";
 import path from "node:path";
 import { startActiveObservation } from "@langfuse/tracing";
 import { loadContextBundle } from "../context.js";
@@ -37,8 +36,8 @@ export async function runAnalyticsAsk(input: {
   const jobId = createAskJobId(input.question);
   const featureSlug = "pm_query";
   const startedAt = new Date().toISOString();
+  // Path-shaped id only — content is stored in ClickHouse ops.job_artifacts.
   const artifactRoot = path.join(repoRoot, "backend", "artifacts", jobId);
-  await mkdir(artifactRoot, { recursive: true });
 
   let traceId = "";
   try {
@@ -140,13 +139,13 @@ export async function runAnalyticsAsk(input: {
               traceId,
             });
             await writeJobRootJson(artifactRoot, "ask_summary.json", {
-                  job_id: jobId,
-                  question: input.question,
-                  status: "uninterpretable",
-                  answer: finalAnswer.short_answer,
-                  artifact_root: artifactRoot,
-                  langfuse_trace_id: traceId,
-                });
+              job_id: jobId,
+              question: input.question,
+              status: "uninterpretable",
+              answer: finalAnswer.short_answer,
+              artifact_root: artifactRoot,
+              langfuse_trace_id: traceId,
+            });
             await recordPipelineRun({
               jobId,
               featureSlug,
