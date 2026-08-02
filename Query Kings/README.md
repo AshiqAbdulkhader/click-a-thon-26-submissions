@@ -30,7 +30,7 @@ All dataset content is **synthetic**. No real customer data or PII.
 
 ## Hosted Demo
 
-<!-- TODO: replace with your live URL after Render deploy -->
+<!-- TODO: replace with hosted demo URL when deployed -->
 
 **[Live demo](YOUR_HOSTED_DEMO_URL)** — report UI with Ask box, instrumented features, context changelog, and Langfuse deep-links.
 
@@ -75,7 +75,7 @@ cd source_code
 ./run-local.sh
 ```
 
-Reset local Docker + artifacts anytime:
+Reset local Docker anytime, then re-run:
 
 ```bash
 cd source_code

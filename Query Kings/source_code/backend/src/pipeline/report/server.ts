@@ -13,7 +13,6 @@ export async function startReportServer(input?: {
   port?: number;
 }) {
   const repoRoot = input?.repoRoot ?? path.resolve(process.cwd(), "..");
-  // Render (and most hosts) inject PORT; fall back to REPORT_PORT / 8787 locally.
   const port =
     input?.port ?? Number(process.env.PORT ?? process.env.REPORT_PORT ?? 8787);
   const host = process.env.HOST ?? "0.0.0.0";
